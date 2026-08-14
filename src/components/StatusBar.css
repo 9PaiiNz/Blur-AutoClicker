@@ -6,6 +6,7 @@
   padding-inline: 0.75rem;
   background: var(--bg-surface);
   border-top: 1px solid var(--border-subtle);
+  backdrop-filter: blur(var(--bg-panel-blur, 0px));
   flex-shrink: 0;
   position: relative;
   z-index: 10;

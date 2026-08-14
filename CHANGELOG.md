@@ -6,6 +6,7 @@
 - Included necessary windows dlls in the release build to prevent issues with starting the application on some systems.
 - Included the Webview2 in the release build to prevent issues with starting the application on some systems. (this means the installer is now quite a bit bigger.)
 ## Fixed
+- Bottom status bar now blurs the background just like other UI elements.
 
 # v3.9.1 - 21.07.2026 (d.m.y)
 ## Fixed
