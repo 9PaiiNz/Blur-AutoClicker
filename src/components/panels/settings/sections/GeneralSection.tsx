@@ -51,11 +51,7 @@ function formatCpu(
 interface Props {
   appInfo: AppInfo;
   updateCheckStatus:
-    | "idle"
-    | "checking"
-    | "available"
-    | "unavailable"
-    | "error";
+    "idle" | "checking" | "available" | "unavailable" | "error";
   onCheckForUpdate: () => void;
 }
 

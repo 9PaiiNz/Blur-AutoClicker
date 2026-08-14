@@ -722,7 +722,7 @@ export default function App() {
 
           let hydratedSettings = loadedSettings;
 
-          let registeredHotkey = loadedSettings.hotkey;
+          let registeredHotkey: string;
           try {
             registeredHotkey = await registerHotkeyCandidate(
               loadedSettings.hotkey,
@@ -1267,16 +1267,19 @@ export default function App() {
     tab,
   ]);
 
-  const handleTabChange = (nextTab: Tab) => {
-    setTab(nextTab);
+  const handleTabChange = useCallback(
+    (nextTab: Tab) => {
+      setTab(nextTab);
 
-    if (nextTab === "settings") return;
-    if (committedSettingsRef.current.lastPanel === nextTab) return;
+      if (nextTab === "settings") return;
+      if (committedSettingsRef.current.lastPanel === nextTab) return;
 
-    updateSettings({
-      lastPanel: nextTab,
-    });
-  };
+      updateSettings({
+        lastPanel: nextTab,
+      });
+    },
+    [updateSettings],
+  );
 
   const handleResetSettings = async () => {
     try {
@@ -1317,7 +1320,10 @@ export default function App() {
   }, []);
 
   const handleTabChangeRef = useRef(handleTabChange);
-  handleTabChangeRef.current = handleTabChange;
+
+  useEffect(() => {
+    handleTabChangeRef.current = handleTabChange;
+  }, [handleTabChange]);
 
   const keybindMapRef = useRef<Record<string, Tab>>({});
 

@@ -36,11 +36,7 @@ interface Props {
   onToggleAlwaysOnTop: () => Promise<void>;
   onReset: () => Promise<void>;
   updateCheckStatus:
-    | "idle"
-    | "checking"
-    | "available"
-    | "unavailable"
-    | "error";
+    "idle" | "checking" | "available" | "unavailable" | "error";
   onCheckForUpdate: () => void;
   initialSettingsTab?: string;
   onInitialTabConsumed?: () => void;

@@ -1,3 +1,9 @@
+# v3.9.2 - 14.08.2026 (d.m.y)
+## Changed
+- Included necessary windows dlls in the release build to prevent issues with starting the application on some systems.
+- Included the Webview2 in the release build to prevent issues with starting the application on some systems. (this means the installer is now quite a bit bigger.)
+## Fixed
+
 # v3.9.1 - 21.07.2026 (d.m.y)
 ## Fixed
 - Fixed Presets not saving the clicker activation hotkey.
