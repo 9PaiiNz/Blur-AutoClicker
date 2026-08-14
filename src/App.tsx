@@ -1162,6 +1162,10 @@ export default function App() {
       "--bg-panel-blur",
       `${resolvePerPage(settings, settings.panelBlur, `panelBlur${sfx}`)}px`,
     );
+    root.style.setProperty(
+      "--bg-image-blur",
+      `${resolvePerPage(settings, settings.backgroundBlur, `backgroundBlur${sfx}`)}px`,
+    );
 
     return () => {
       root.style.removeProperty("--bg-base");
@@ -1170,12 +1174,14 @@ export default function App() {
       root.style.removeProperty("--bg-input");
       root.style.removeProperty("--bg-input-off");
       root.style.removeProperty("--bg-panel-blur");
+      root.style.removeProperty("--bg-image-blur");
     };
   }, [
     settings,
     settings.windowOpacity,
     settings.panelOpacity,
     settings.panelBlur,
+    settings.backgroundBlur,
     settings.theme,
     settings.perPageAppearance,
     settings.panelOpacitySimple,
@@ -1188,6 +1194,11 @@ export default function App() {
     settings.panelBlurZones,
     settings.panelBlurClickPoints,
     settings.panelBlurSettings,
+    settings.backgroundBlurSimple,
+    settings.backgroundBlurAdvanced,
+    settings.backgroundBlurZones,
+    settings.backgroundBlurClickPoints,
+    settings.backgroundBlurSettings,
     settings.windowOpacitySimple,
     settings.windowOpacityAdvanced,
     settings.windowOpacityZones,

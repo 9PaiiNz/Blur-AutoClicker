@@ -410,6 +410,11 @@ const SETTINGS_ONLY_FIELDS = {
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },
   },
+  backgroundBlur: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
   presets: {
     default: [] as PresetDefinition[],
     ui: { section: "presets", control: "custom" },
@@ -466,6 +471,11 @@ const SETTINGS_ONLY_FIELDS = {
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },
   },
+  backgroundBlurSimple: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
   backgroundImageAdvanced: {
     default: "",
     ui: { section: "appearance", control: "custom" },
@@ -486,6 +496,11 @@ const SETTINGS_ONLY_FIELDS = {
     ui: { section: "appearance", control: "number" },
   },
   panelBlurAdvanced: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
+  backgroundBlurAdvanced: {
     default: 0,
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },
@@ -514,6 +529,11 @@ const SETTINGS_ONLY_FIELDS = {
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },
   },
+  backgroundBlurZones: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
   backgroundImageClickPoints: {
     default: "",
     ui: { section: "appearance", control: "custom" },
@@ -538,6 +558,11 @@ const SETTINGS_ONLY_FIELDS = {
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },
   },
+  backgroundBlurClickPoints: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
   backgroundImageSettings: {
     default: "",
     ui: { section: "appearance", control: "custom" },
@@ -558,6 +583,11 @@ const SETTINGS_ONLY_FIELDS = {
     ui: { section: "appearance", control: "number" },
   },
   panelBlurSettings: {
+    default: 0,
+    limit: { min: 0, max: 20 },
+    ui: { section: "appearance", control: "number" },
+  },
+  backgroundBlurSettings: {
     default: 0,
     limit: { min: 0, max: 20 },
     ui: { section: "appearance", control: "number" },

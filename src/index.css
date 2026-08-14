@@ -135,6 +135,7 @@ body {
   background-position: center;
   background-repeat: no-repeat;
   opacity: calc(var(--bg-opacity, 100) / 100);
+  filter: blur(var(--bg-image-blur, 0px));
   z-index: 0;
   pointer-events: none;
   border-radius: inherit;
@@ -160,7 +161,6 @@ body {
   min-height: 0;
   min-width: 0;
   contain: layout style paint;
-  backdrop-filter: blur(var(--bg-panel-blur, 0px));
 }
 
 .app-root[data-tab="simple"] .panel-area {
