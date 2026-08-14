@@ -1,14 +1,20 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { error } from "@tauri-apps/plugin-log";
 import { useState } from "react";
 
+import { isPortableMode } from "../store";
 import UnavailableReason from "./UnavailableReason";
 import "./Updatebanner.css";
+
+const GITHUB_RELEASES_URL =
+  "https://github.com/Blur009/Blur-AutoClicker/releases/latest";
 
 interface UpdateBannerProps {
   currentVersion: string;
   latestVersion: string;
+  portable?: boolean;
 }
 
 type UpdateStage = "ready" | "installing" | "restart-required" | "error";
@@ -16,11 +22,47 @@ type UpdateStage = "ready" | "installing" | "restart-required" | "error";
 export default function UpdateBanner({
   currentVersion,
   latestVersion,
+  portable = false,
 }: UpdateBannerProps) {
   const [stage, setStage] = useState<UpdateStage>("ready");
   const [statusText, setStatusText] = useState<string | null>(null);
 
   const handleUpdate = async () => {
+    if (portable) {
+      try {
+        await openUrl(GITHUB_RELEASES_URL);
+      } catch (err) {
+        error(
+          JSON.stringify({
+            source: "Updatebanner.openRelease",
+            error: String(err),
+          }),
+        );
+        setStage("error");
+        setStatusText("Could not open the download page.");
+      }
+      return;
+    }
+
+    // Guard against the brief window where `portable` is still the false
+    // default while the real get_app_info result is in flight.
+    try {
+      if (await isPortableMode()) {
+        await openUrl(GITHUB_RELEASES_URL);
+        return;
+      }
+    } catch (err) {
+      error(
+        JSON.stringify({
+          source: "Updatebanner.openRelease",
+          error: String(err),
+        }),
+      );
+      setStage("error");
+      setStatusText("Update check failed. Try again.");
+      return;
+    }
+
     try {
       setStage("installing");
       setStatusText("Preparing update...");
@@ -94,13 +136,19 @@ export default function UpdateBanner({
           Restart to Apply Update
         </button>
       ) : (
-        <UnavailableReason reason={installDisabledReason}>
+        <UnavailableReason
+          reason={portable ? undefined : installDisabledReason}
+        >
           <button
             className="update-banner-btn"
             onClick={handleUpdate}
-            disabled={stage === "installing"}
+            disabled={!portable && stage === "installing"}
           >
-            {stage === "installing" ? "Installing..." : "Download and Install"}
+            {portable
+              ? "Download from GitHub"
+              : stage === "installing"
+                ? "Installing..."
+                : "Download and Install"}
           </button>
         </UnavailableReason>
       )}

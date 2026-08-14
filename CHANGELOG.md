@@ -1,5 +1,8 @@
 # v3.9.2 - 14.08.2026 (d.m.y)
 ## Changed
+- Portable build now keeps all data (settings, statistics, diagnostics, WebView2 user data) inside its own folder. Create `portable.txt` with the content `BlurAutoClicker Portable Mode` next to the exe to activate portable mode.
+- Portable build shows `vX.X.X portable (no auto update)` and a "Download from GitHub" button instead of the in-app updater.
+- Portable release artifact now bundles the VC++ runtime DLLs, crashpad handler and WebView2 bootstrapper instead of a bare exe.
 - Included necessary windows dlls in the release build to prevent issues with starting the application on some systems.
 - Included the Webview2 in the release build to prevent issues with starting the application on some systems. (this means the installer is now quite a bit bigger.)
 ## Fixed

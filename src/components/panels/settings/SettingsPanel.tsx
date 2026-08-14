@@ -303,6 +303,7 @@ export default function SettingsPanel({
             settings={settings}
             update={update}
             onToggleAlwaysOnTop={onToggleAlwaysOnTop}
+            portable={appInfo.portable}
           />
         )}
         {activeTab === "appearance" && (

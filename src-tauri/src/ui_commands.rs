@@ -193,7 +193,16 @@ pub fn get_app_info(app: AppHandle) -> AppResult<AppInfoPayload> {
         version,
         update_status: String::from("Update checks are disabled in development"),
         screenshot_protection_supported: false,
+        portable: crate::portable::is_portable(),
     })
+}
+
+#[tauri::command]
+pub fn get_portable_info() -> crate::app_state::PortableInfo {
+    crate::app_state::PortableInfo {
+        portable: crate::portable::is_portable(),
+        data_dir: crate::portable::data_dir().map(|p| p.to_string_lossy().to_string()),
+    }
 }
 
 #[tauri::command]

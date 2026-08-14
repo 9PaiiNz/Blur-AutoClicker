@@ -11,12 +11,14 @@ interface Props {
   settings: Settings;
   update: (patch: Partial<Settings>) => void;
   onToggleAlwaysOnTop: () => Promise<void>;
+  portable: boolean;
 }
 
 export default function BehaviorSection({
   settings,
   update,
   onToggleAlwaysOnTop,
+  portable,
 }: Props) {
   const [pendingAction, setPendingAction] = useState<
     "extended-click-speed-limit" | null
@@ -273,35 +275,37 @@ export default function BehaviorSection({
           </div>
         </div>
 
-        <div className="settings-row">
-          <div className="settings-label-group">
-            <span className="settings-label">Run on Startup</span>
-            <span className="settings-sublabel">
-              Start clicking when the app opens.
-            </span>
+        {!portable && (
+          <div className="settings-row">
+            <div className="settings-label-group">
+              <span className="settings-label">Run on Startup</span>
+              <span className="settings-sublabel">
+                Start clicking when the app opens.
+              </span>
+            </div>
+            <div className="settings-toggle-wrapper">
+              <button
+                className={`settings-toggle ${autostartEnabled ? "on" : "off"}`}
+                disabled={autostartEnabled === null}
+                onClick={() => {
+                  const newValue = !autostartEnabled;
+                  invoke("set_autostart_enabled", { enabled: newValue })
+                    .then(() => setAutostartEnabled(newValue))
+                    .catch((err) =>
+                      error(
+                        JSON.stringify({
+                          source: "SettingsPanel.setAutostart",
+                          error: String(err),
+                        }),
+                      ),
+                    );
+                }}
+              >
+                <span className="settings-toggle-knob" />
+              </button>
+            </div>
           </div>
-          <div className="settings-toggle-wrapper">
-            <button
-              className={`settings-toggle ${autostartEnabled ? "on" : "off"}`}
-              disabled={autostartEnabled === null}
-              onClick={() => {
-                const newValue = !autostartEnabled;
-                invoke("set_autostart_enabled", { enabled: newValue })
-                  .then(() => setAutostartEnabled(newValue))
-                  .catch((err) =>
-                    error(
-                      JSON.stringify({
-                        source: "SettingsPanel.setAutostart",
-                        error: String(err),
-                      }),
-                    ),
-                  );
-              }}
-            >
-              <span className="settings-toggle-knob" />
-            </button>
-          </div>
-        </div>
+        )}
       </SettingsCard>
 
       <ConfirmDialog

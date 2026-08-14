@@ -1,6 +1,7 @@
 mod crash_handler;
 mod diagnostics;
 mod error;
+mod portable;
 mod settings;
 pub use settings::ClickerSettings;
 mod app_events;
@@ -56,6 +57,28 @@ fn apply_ws_ex_noactivate(window: &tauri::WebviewWindow, enable: bool) {
 
 fn is_rtss_running() -> bool {
     crate::engine::process::is_process_running("RTSS.exe")
+}
+
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let mut builder =
+        tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+            .title("BlurAutoClicker")
+            .visible(false)
+            .inner_size(500.0, 150.0)
+            .resizable(false)
+            .fullscreen(false)
+            .decorations(false)
+            .transparent(true)
+            .maximizable(false)
+            .shadow(false);
+
+    if let Some(dir) = crate::portable::webview_dir("main") {
+        log::info!("[Window] Main window webview data dir: {}", dir.display());
+        builder = builder.data_directory(dir);
+    }
+
+    builder.build()?;
+    Ok(())
 }
 
 fn setup_panic_hook() {
@@ -343,6 +366,7 @@ fn create_clicker_state() -> ClickerState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    crate::portable::init();
     setup_panic_hook();
 
     let rtss_detected = is_rtss_running();
@@ -354,7 +378,6 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -362,6 +385,38 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             setup_logging(&handle);
+
+            if !crate::portable::is_portable() {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+
+            if let Err(e) = create_main_window(app) {
+                log::error!("[Window] Failed to create main window: {e}");
+                #[cfg(target_os = "windows")]
+                if crate::portable::is_portable() {
+                    let msg = if !crate::portable::webview2_installed() {
+                        if crate::portable::webview2_bootstrapper_started() {
+                            "The Microsoft Edge WebView2 Runtime was not found.\n\nThe bundled installer was started automatically. Wait a moment, then start BlurAutoClicker again."
+                        } else {
+                            "The Microsoft Edge WebView2 Runtime was not found.\n\nThe app could not start its installer. Install it manually from:\nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703"
+                        }
+                    } else {
+                        &format!(
+                            "The app could not start.\n\n{0}\n\nIf you extracted the app to a folder you cannot write to (such as Program Files), move it somewhere writable (for example Documents or the Desktop).",
+                            e
+                        )
+                    };
+                    crate::portable::notify_fatal_error(msg);
+                    std::process::exit(1);
+                } else {
+                    let msg = format!(
+                        "The application window could not be created.\n\n{0}\n\nIf reinstalling the app does not help, please report the issue at:\nhttps://github.com/Blur009/Blur-AutoClicker/issues",
+                        e
+                    );
+                    crate::portable::notify_fatal_error(&msg);
+                    std::process::exit(1);
+                }
+            }
 
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
@@ -409,6 +464,7 @@ pub fn run() {
             ui_commands::start_custom_stop_zone_pick,
             ui_commands::cancel_custom_stop_zone_pick,
             ui_commands::get_app_info,
+            ui_commands::get_portable_info,
             ui_commands::get_stats,
             ui_commands::reset_stats,
             updates::update_checker::check_for_updates,

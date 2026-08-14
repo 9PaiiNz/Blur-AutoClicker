@@ -28,11 +28,12 @@ pub fn init_overlay(app: &AppHandle) -> AppResult<()> {
     let window = match app.get_webview_window("overlay") {
         Some(w) => w,
         None => {
-            let overlay_data_dir = app
-                .path()
-                .app_local_data_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join("EBWebView-overlay");
+            let overlay_data_dir = crate::portable::webview_dir("overlay").unwrap_or_else(|| {
+                app.path()
+                    .app_local_data_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join("EBWebView-overlay")
+            });
 
             log::info!(
                 "[Overlay] Creating overlay window (user data: {})",

@@ -124,6 +124,7 @@ const DEFAULT_APP_INFO: AppInfo = {
   version: APP_VERSION,
   updateStatus: "Update checks are disabled in development",
   screenshotProtectionSupported: false,
+  portable: false,
 };
 
 async function syncSettingsToBackend(settings: Settings) {
@@ -1417,6 +1418,7 @@ export default function App() {
           key={`${updateInfo.currentVersion}:${updateInfo.latestVersion}`}
           currentVersion={updateInfo.currentVersion}
           latestVersion={updateInfo.latestVersion}
+          portable={appInfo.portable}
         />
       )}
       <main className="panel-area">

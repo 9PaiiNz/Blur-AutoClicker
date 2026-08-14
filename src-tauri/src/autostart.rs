@@ -4,6 +4,9 @@ const APP_NAME: &str = "BlurAutoClicker";
 const RUN_KEY: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 pub fn get_autostart_enabled() -> bool {
+    if crate::portable::is_portable() {
+        return false;
+    }
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
 
@@ -15,6 +18,10 @@ pub fn get_autostart_enabled() -> bool {
 }
 
 pub fn set_autostart_enabled(enabled: bool) -> io::Result<()> {
+    if crate::portable::is_portable() {
+        log::info!("[Autostart] Skipping registry write in portable mode");
+        return Ok(());
+    }
     use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
     use winreg::RegKey;
 
