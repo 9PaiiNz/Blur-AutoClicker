@@ -13,6 +13,9 @@ export type PresetId = string;
 export type RateInputMode = "rate" | "duration";
 export type ProcessListMode = "whitelist" | "blacklist";
 
+const INT32_MIN: number = -2147483648;
+const INT32_MAX: number = 2147483647;
+
 export interface ProcessListEntry {
   name: string;
   enabled: boolean;
@@ -610,11 +613,6 @@ const SETTINGS_ONLY_FIELDS = {
   },
 } satisfies Record<string, FieldDef<unknown>>;
 
-export const SETTINGS_FIELD_DEFS = {
-  ...PRESET_FIELDS,
-  ...SETTINGS_ONLY_FIELDS,
-};
-
 type DefaultValues<F extends Record<string, FieldDef<unknown>>> = {
   [K in keyof F]: F[K]["default"];
 };
@@ -820,35 +818,6 @@ export const SETTINGS_LIMITS = {
   clickPointRadius: { min: 0, max: 9999 },
 };
 
-export const SETTINGS_UI_SCHEMA = [
-  {
-    id: "behavior",
-    fields: [
-      "alwaysOnTop",
-      "showStopOverlay",
-      "showStopReason",
-      "strictHotkeyModifiers",
-      "taskSwitcherStopEnabled",
-      "extendedClickSpeedLimit",
-    ],
-  },
-  {
-    id: "startup",
-    fields: ["minimizeToTray", "rememberWindowPosition"],
-  },
-  {
-    id: "appearance",
-    fields: ["theme", "accentColor"],
-  },
-  {
-    id: "presets",
-    fields: ["presets", "activePresetId"],
-  },
-] as const satisfies ReadonlyArray<{
-  id: string;
-  fields: ReadonlyArray<keyof Settings>;
-}>;
-
 export function clampNumber(
   value: unknown,
   fallback: number,
@@ -1002,11 +971,11 @@ function sanitizeClickPoints(value: unknown): ClickPoint[] {
           : createClickPointId();
       const x =
         typeof candidate.x === "number" && Number.isFinite(candidate.x)
-          ? Math.trunc(candidate.x)
+          ? clampNumber(Math.trunc(candidate.x), 0, INT32_MIN, INT32_MAX)
           : null;
       const y =
         typeof candidate.y === "number" && Number.isFinite(candidate.y)
-          ? Math.trunc(candidate.y)
+          ? clampNumber(Math.trunc(candidate.y), 0, INT32_MIN, INT32_MAX)
           : null;
       const clicks =
         typeof candidate.clicks === "number" &&
@@ -1055,20 +1024,30 @@ function sanitizeStopZones(value: unknown): StopZone[] {
           : createStopZoneId();
       const x =
         typeof candidate.x === "number" && Number.isFinite(candidate.x)
-          ? Math.trunc(candidate.x)
+          ? clampNumber(Math.trunc(candidate.x), 0, INT32_MIN, INT32_MAX)
           : 0;
       const y =
         typeof candidate.y === "number" && Number.isFinite(candidate.y)
-          ? Math.trunc(candidate.y)
+          ? clampNumber(Math.trunc(candidate.y), 0, INT32_MIN, INT32_MAX)
           : 0;
       const width =
         typeof candidate.width === "number" && Number.isFinite(candidate.width)
-          ? Math.max(1, Math.trunc(candidate.width))
+          ? clampNumber(
+              Math.max(1, Math.trunc(candidate.width)),
+              100,
+              1,
+              INT32_MAX,
+            )
           : 100;
       const height =
         typeof candidate.height === "number" &&
         Number.isFinite(candidate.height)
-          ? Math.max(1, Math.trunc(candidate.height))
+          ? clampNumber(
+              Math.max(1, Math.trunc(candidate.height)),
+              100,
+              1,
+              INT32_MAX,
+            )
           : 100;
       const action =
         candidate.action === "stop" ||
@@ -1185,6 +1164,11 @@ export function sanitizePresetSnapshot(
     defaults.timeLimitUnit,
     TIME_LIMIT_UNIT_OPTIONS,
   );
+  snapshot.processListMode = sanitizeEnum(
+    saved.processListMode,
+    defaults.processListMode,
+    ["whitelist", "blacklist"],
+  );
   snapshot.clickPoints = sanitizeClickPoints(
     saved.clickPoints ?? (saved.sequencePoints as ClickPoint[] | undefined),
   );
@@ -1293,6 +1277,11 @@ export function sanitizeSettings(
     saved.timeLimitUnit,
     defaults.timeLimitUnit,
     TIME_LIMIT_UNIT_OPTIONS,
+  );
+  presetSettings.processListMode = sanitizeEnum(
+    saved.processListMode,
+    defaults.processListMode,
+    ["whitelist", "blacklist"],
   );
   presetSettings.clickPoints = sanitizeClickPoints(
     saved.clickPoints ??

@@ -51,12 +51,16 @@ fn trim_webview_processes() {
         CloseHandle(snapshot);
 
         let mut descendant_pids: Vec<u32> = Vec::new();
+        let mut visited: std::collections::HashSet<u32> =
+            std::collections::HashSet::from([our_pid]);
         let mut queue: Vec<u32> = vec![our_pid];
         while let Some(pid) = queue.pop() {
             if let Some(children) = children_of.get(&pid) {
                 for &child in children {
-                    descendant_pids.push(child);
-                    queue.push(child);
+                    if visited.insert(child) {
+                        descendant_pids.push(child);
+                        queue.push(child);
+                    }
                 }
             }
         }

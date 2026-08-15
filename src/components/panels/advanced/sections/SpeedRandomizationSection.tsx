@@ -79,6 +79,7 @@ export default function SpeedRandomizationSection({ settings, update }: Props) {
               onChange={(v) => update({ speedRandomization: v })}
               min={SETTINGS_LIMITS.speedRandomization.min}
               max={SETTINGS_LIMITS.speedRandomization.max}
+              allowDecimal
             />
             <span className="adv-unit">%</span>
           </div>

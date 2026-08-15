@@ -485,8 +485,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::WindowEvent { event, label, .. } = &event {
-                match event {
+            match &event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    // Central shutdown: fires for window close, tray quit,
+                    // quit_app, and updater restarts. Drops the crashpad client
+                    // so crashpad_handler.exe terminates instead of being orphaned.
+                    crate::crash_handler::shutdown_crashpad();
+                }
+                tauri::RunEvent::WindowEvent { event, label, .. } => match event {
                     tauri::WindowEvent::CloseRequested { api, .. } if label == "main" => {
                         api.prevent_close();
                         crate::app_events::APP_EVENTS_SHUTDOWN
@@ -505,7 +511,8 @@ pub fn run() {
                         let _ = app_handle.emit("minimized-changed", minimized);
                     }
                     _ => {}
-                }
+                },
+                _ => {}
             }
         });
 }

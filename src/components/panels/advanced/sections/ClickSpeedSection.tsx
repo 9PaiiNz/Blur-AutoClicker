@@ -1,6 +1,6 @@
 import { useState, type WheelEvent, type FocusEvent } from "react";
 import type { Settings } from "../../../../store";
-import { normalizeIntegerRaw } from "../../../../numberInput";
+import { normalizeDecimalRaw } from "../../../../numberInput";
 import {
   convertDurationToRate,
   formatIntervalMs,
@@ -21,7 +21,7 @@ import {
   INTERVAL_OPTIONS,
   handleDurationBlur,
   handleDurationWheelStep,
-  handleNumberBlur,
+  handleDecimalBlur,
   handleNumberChange,
   handleWheelStep,
 } from "../../../sharedCadence";
@@ -101,31 +101,32 @@ export default function ClickSpeedSection({ settings, update }: Props) {
                 <div className="adv-value-outline">
                   <div className="adv-foc">
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       className="adv-number-sm"
                       value={draftCps ?? settings.clickSpeed}
-                      min={1}
-                      max={maxClickSpeed}
-                      style={{ width: "2.5rem", textAlign: "right" }}
+                      style={{ width: "5ch", textAlign: "right" }}
                       onChange={(event) => {
                         const raw = event.target.value;
-                        if (raw === "") {
-                          setDraftCps("");
-                        } else {
-                          const normalized = normalizeIntegerRaw(raw);
-                          if (normalized !== raw)
-                            event.target.value = normalized;
-                          if (normalized === "" || normalized === "-") {
-                            setDraftCps(normalized);
-                            return;
-                          }
-                          setDraftCps(null);
-                          update({ clickSpeed: Number(normalized) });
+                        const normalized = normalizeDecimalRaw(raw);
+                        if (normalized !== raw) event.target.value = normalized;
+                        if (
+                          normalized === "" ||
+                          normalized === "-" ||
+                          normalized === "." ||
+                          normalized === "-." ||
+                          normalized.endsWith(".")
+                        ) {
+                          setDraftCps(normalized);
+                          return;
                         }
+                        setDraftCps(null);
+                        const val = Number(normalized);
+                        update({ clickSpeed: Number.isNaN(val) ? 1 : val });
                       }}
                       onBlur={(event) => {
                         setDraftCps(null);
-                        handleNumberBlur(event, 1, maxClickSpeed, (next) =>
+                        handleDecimalBlur(event, 1, maxClickSpeed, (next) =>
                           update({ clickSpeed: next }),
                         );
                       }}

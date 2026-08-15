@@ -1,5 +1,16 @@
 #[cfg(feature = "crashpad")]
 use std::path::PathBuf;
+#[cfg(feature = "crashpad")]
+use std::sync::Mutex;
+
+#[cfg(feature = "crashpad")]
+use crashpad_rs::CrashpadClient;
+
+// Held in a static so the client is never dropped during abnormal termination
+// (a drop during a crash can hang). The static is deliberately not dropped at
+// process exit; graceful shutdown goes through `shutdown_crashpad()`.
+#[cfg(feature = "crashpad")]
+static CRASHPAD_CLIENT: Mutex<Option<CrashpadClient>> = Mutex::new(None);
 
 #[cfg(feature = "crashpad")]
 pub fn initialize_crashpad() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,8 +23,8 @@ pub fn initialize_crashpad() -> Result<(), Box<dyn std::error::Error>> {
     let handler_path = resolve_handler_path()?;
 
     let config = crashpad_rs::CrashpadConfig::builder()
-        .handler_path(handler_path.to_str().unwrap())
-        .database_path(crash_database.to_str().unwrap())
+        .handler_path(&handler_path)
+        .database_path(&crash_database)
         .build();
 
     client.start_with_config(&config, &std::collections::HashMap::new())?;
@@ -21,11 +32,22 @@ pub fn initialize_crashpad() -> Result<(), Box<dyn std::error::Error>> {
         "[Crashpad] Initialized, crash reports directory: {}",
         crash_database.display()
     );
-    // Must not drop during process exit — Crashpad client sends crash reports on
-    // drop, but during abnormal termination the drop may hang or deadlock.
-    // Leaking ensures the handler process stays alive.
-    std::mem::forget(client);
+
+    let mut slot = CRASHPAD_CLIENT.lock().unwrap_or_else(|e| e.into_inner());
+    *slot = Some(client);
     Ok(())
+}
+
+#[cfg(feature = "crashpad")]
+pub fn shutdown_crashpad() {
+    let mut slot = CRASHPAD_CLIENT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(client) = slot.take() {
+        // Dropping the client calls crashpad_client_delete, which tells the
+        // handler process to shut down. Without this the handler stays alive
+        // as an orphan after the app exits.
+        drop(client);
+        log::info!("[Crashpad] Shut down.");
+    }
 }
 
 #[cfg(feature = "crashpad")]
@@ -56,13 +78,16 @@ pub fn initialize_crashpad() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(not(feature = "crashpad"))]
+pub fn shutdown_crashpad() {}
+
 #[cfg(test)]
 mod tests {
 
     #[test]
     #[cfg(not(feature = "crashpad"))]
     fn crashpad_stub_returns_ok() {
-        let result = initialize_crashpad();
+        let result = super::initialize_crashpad();
         assert!(result.is_ok());
     }
 }
