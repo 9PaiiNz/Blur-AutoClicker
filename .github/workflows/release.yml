@@ -76,11 +76,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The bare exe is an upgrade drop for EXISTING portable folders
-          # (it has no marker/DLLs/bootstrapper); the zip is the full build.
-          $portableExe = "BlurAutoClicker-${{ github.ref_name }}-portable.exe"
-          Copy-Item "src-tauri/target/release/BlurAutoClicker.exe" $portableExe -Force
           gh release upload "${{ github.ref_name }}" `
             "BlurAutoClicker-${{ github.ref_name }}-portable.zip" `
-            $portableExe `
             --clobber
