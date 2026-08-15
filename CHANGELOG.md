@@ -1,4 +1,4 @@
-# v3.9.2 - 14.08.2026 (d.m.y)
+# v3.9.2 - 15.08.2026 (d.m.y)
 # New
 - Added slider to change panel and background blur individually in the appearance settings.
 - Officially added BlurAutoClicker to winget. (winget install -e --id Blur009.BlurAutoClicker --source winget --silent)
