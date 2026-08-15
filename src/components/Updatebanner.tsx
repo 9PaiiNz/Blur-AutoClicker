@@ -2,9 +2,16 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { error } from "@tauri-apps/plugin-log";
-import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useRef, useState } from "react";
 
 import { isPortableMode } from "../store";
+import {
+  compareVersions,
+  parseChangelog,
+  type ChangelogEntry,
+} from "../changelog";
+import UpdatePreviewModal from "./UpdatePreviewModal";
 import UnavailableReason from "./UnavailableReason";
 import "./Updatebanner.css";
 
@@ -26,21 +33,63 @@ export default function UpdateBanner({
 }: UpdateBannerProps) {
   const [stage, setStage] = useState<UpdateStage>("ready");
   const [statusText, setStatusText] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewEntries, setPreviewEntries] = useState<ChangelogEntry[] | null>(
+    null,
+  );
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const previewFetchedRef = useRef(false);
+
+  const handlePreview = async () => {
+    if (previewOpen) {
+      setPreviewOpen(false);
+      return;
+    }
+    setPreviewOpen(true);
+    if (previewFetchedRef.current) return;
+
+    setPreviewLoading(true);
+    setPreviewError(false);
+    try {
+      const raw = await invoke<string>("fetch_changelog");
+      const all = parseChangelog(raw);
+      const newer = all.filter(
+        (entry) => compareVersions(entry.version, currentVersion) > 0,
+      );
+      setPreviewEntries(newer.length > 0 ? newer : all.slice(0, 1));
+      previewFetchedRef.current = true;
+    } catch (err) {
+      error(
+        JSON.stringify({
+          source: "Updatebanner.changelogPreview",
+          error: String(err),
+        }),
+      );
+      setPreviewError(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const openReleasePage = async () => {
+    try {
+      await openUrl(GITHUB_RELEASES_URL);
+    } catch (err) {
+      error(
+        JSON.stringify({
+          source: "Updatebanner.openRelease",
+          error: String(err),
+        }),
+      );
+      setStage("error");
+      setStatusText("Could not open the download page.");
+    }
+  };
 
   const handleUpdate = async () => {
     if (portable) {
-      try {
-        await openUrl(GITHUB_RELEASES_URL);
-      } catch (err) {
-        error(
-          JSON.stringify({
-            source: "Updatebanner.openRelease",
-            error: String(err),
-          }),
-        );
-        setStage("error");
-        setStatusText("Could not open the download page.");
-      }
+      await openReleasePage();
       return;
     }
 
@@ -152,6 +201,23 @@ export default function UpdateBanner({
           </button>
         </UnavailableReason>
       )}
+      {stage !== "restart-required" && (
+        <button
+          className="update-banner-btn update-banner-preview-btn"
+          onClick={handlePreview}
+        >
+          Preview Changes
+        </button>
+      )}
+      <UpdatePreviewModal
+        open={previewOpen}
+        currentVersion={currentVersion}
+        latestVersion={latestVersion}
+        loading={previewLoading}
+        error={previewError}
+        entries={previewEntries}
+        onClose={() => setPreviewOpen(false)}
+      />
     </div>
   );
 }

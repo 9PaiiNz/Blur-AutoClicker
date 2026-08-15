@@ -1,7 +1,8 @@
 # v3.9.2 - 15.08.2026 (d.m.y)
-# New
+## New
 - Added slider to change panel and background blur individually in the appearance settings.
 - Officially added BlurAutoClicker to winget. (winget install -e --id Blur009.BlurAutoClicker --source winget --silent)
+- version 3.9.2 and above will now pull the changelog for the next version so you can preview the changes before updating.
 ## Changed
 - Portable build now keeps all data (settings, statistics, diagnostics, WebView2 user data) inside its own folder. Create `portable.txt` with the content `BlurAutoClicker Portable Mode` next to the exe to activate portable mode.
 - Portable build shows `vX.X.X portable (no auto update)` and a "Download from GitHub" button instead of the in-app updater.

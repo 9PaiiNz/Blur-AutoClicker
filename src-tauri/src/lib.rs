@@ -468,6 +468,7 @@ pub fn run() {
             ui_commands::get_stats,
             ui_commands::reset_stats,
             updates::update_checker::check_for_updates,
+            updates::update_checker::fetch_changelog,
             overlay::hide_overlay,
             ui_commands::hide_main_window,
             ui_commands::quit_app,
