@@ -98,20 +98,6 @@
   flex-shrink: 1;
 }
 
-.faderbox::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    transparent,
-    var(--bg-surface)
-  );
-  z-index: 1;
-  pointer-events: none;
-}
-
 .simple-inline-input {
   background: transparent;
   border: none;

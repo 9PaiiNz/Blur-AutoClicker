@@ -14,13 +14,15 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use std::time::Instant;
 use tauri::Manager;
-use windows_sys::Win32::Foundation::{GetLastError, LRESULT};
+use windows_sys::Win32::Foundation::{GetLastError, LRESULT, POINT};
+use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WaitMessage,
-    KBDLLHOOKSTRUCT, LLKHF_EXTENDED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    CallNextHookEx, GetAncestor, GetCursorPos, GetWindowThreadProcessId, PeekMessageW,
+    SetWindowsHookExW, UnhookWindowsHookEx, WaitMessage, WindowFromPoint, GA_ROOT, KBDLLHOOKSTRUCT,
+    LLKHF_EXTENDED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 const PM_REMOVE: u32 = 0x0001;
@@ -302,6 +304,7 @@ pub fn start_hotkey_listener(app: AppHandle) {
 
         let state = app.state::<ClickerState>();
         let mut was_pressed = false;
+        let mut was_suppressed = false;
         let mut last_check = Instant::now();
         let mut msg: MSG = std::mem::zeroed();
 
@@ -379,6 +382,7 @@ pub fn start_hotkey_listener(app: AppHandle) {
                         .suppress_hotkey_until_release
                         .store(false, Ordering::SeqCst);
                     was_pressed = false;
+                    was_suppressed = false;
                     continue;
                 }
 
@@ -387,10 +391,22 @@ pub fn start_hotkey_listener(app: AppHandle) {
                     continue;
                 }
 
+                let suppress_mouse_on_own_window =
+                    binding.as_ref().is_some_and(is_mouse_hotkey_binding)
+                        && is_cursor_over_own_window();
+
                 if currently_pressed && !was_pressed {
-                    handle_hotkey_pressed(&app);
+                    if suppress_mouse_on_own_window {
+                        was_suppressed = true;
+                    } else {
+                        was_suppressed = false;
+                        handle_hotkey_pressed(&app);
+                    }
                 } else if !currently_pressed && was_pressed {
-                    handle_hotkey_released(&app);
+                    if !was_suppressed {
+                        handle_hotkey_released(&app);
+                    }
+                    was_suppressed = false;
                 }
 
                 was_pressed = currently_pressed;
@@ -410,6 +426,35 @@ pub fn start_hotkey_listener(app: AppHandle) {
             UnhookWindowsHookEx(kb_hook);
         }
     });
+}
+
+fn is_mouse_hotkey_binding(binding: &HotkeyBinding) -> bool {
+    [
+        VK_LBUTTON as i32,
+        VK_RBUTTON as i32,
+        VK_MBUTTON as i32,
+        VK_XBUTTON1 as i32,
+        VK_XBUTTON2 as i32,
+    ]
+    .contains(&binding.main_vk)
+}
+
+fn is_cursor_over_own_window() -> bool {
+    unsafe {
+        let mut pt: POINT = std::mem::zeroed();
+        if GetCursorPos(&mut pt) == 0 {
+            return false;
+        }
+        let hwnd = WindowFromPoint(pt);
+        if hwnd.is_null() {
+            return false;
+        }
+        let root = GetAncestor(hwnd, GA_ROOT);
+        let root = if root.is_null() { hwnd } else { root };
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(root, &mut pid);
+        pid == GetCurrentProcessId()
+    }
 }
 
 fn is_hotkey_binding_pressed_physical(binding: &HotkeyBinding, strict: bool) -> bool {
@@ -679,7 +724,9 @@ fn parse_function_key_token(token: &str) -> Option<(i32, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_hotkey_binding, modifiers_match, parse_hotkey_binding};
+    use super::{
+        format_hotkey_binding, is_mouse_hotkey_binding, modifiers_match, parse_hotkey_binding,
+    };
 
     #[test]
     fn numpad_tokens_round_trip() {
@@ -704,6 +751,26 @@ mod tests {
             let binding = parse_hotkey_binding(&hotkey).expect("token should parse");
             assert_eq!(binding.key_token, token);
             assert_eq!(format_hotkey_binding(&binding), hotkey);
+        }
+    }
+
+    #[test]
+    fn mouse_button_bindings_are_detected() {
+        for hotkey in [
+            "mouseleft",
+            "mouseright",
+            "mousemiddle",
+            "mouse4",
+            "mouse5",
+            "ctrl+mouseleft",
+            "shift+mouse4",
+        ] {
+            let binding = parse_hotkey_binding(hotkey).expect("mouse token should parse");
+            assert!(is_mouse_hotkey_binding(&binding));
+        }
+        for hotkey in ["f8", "space", "ctrl+shift+f8"] {
+            let binding = parse_hotkey_binding(hotkey).expect("key token should parse");
+            assert!(!is_mouse_hotkey_binding(&binding));
         }
     }
 

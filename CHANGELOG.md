@@ -12,6 +12,7 @@
 ## Fixed
 - Bottom status bar now blurs the background just like other UI elements.
 - Increased size of simple mode cps input field to prevent the text from being cut off.
+- Hotkey not able to be changed when set to left-click now fixed.
 
 # v3.9.1 - 21.07.2026 (d.m.y)
 ## Fixed
