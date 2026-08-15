@@ -22,9 +22,11 @@ export default function LimitsSection({ settings, update }: Props) {
       : mode;
 
   const updateRef = useRef(update);
+  const isClicksModeRef = useRef(effectiveMode === "clicks");
 
   useLayoutEffect(() => {
     updateRef.current = update;
+    isClicksModeRef.current = effectiveMode === "clicks";
   });
 
   useEffect(() => {
@@ -62,7 +64,7 @@ export default function LimitsSection({ settings, update }: Props) {
   };
 
   const handleToggleChange = (nextValue: boolean) => {
-    if (isClicksMode) {
+    if (isClicksModeRef.current) {
       update({
         clickLimitEnabled: nextValue,
         timeLimitEnabled: false,
@@ -140,6 +142,7 @@ export default function LimitsSection({ settings, update }: Props) {
                     onChange={(v) => update({ timeLimit: v })}
                     min={SETTINGS_LIMITS.timeLimit.min}
                     style={{ width: "38px", textAlign: "right" }}
+                    allowDecimal
                   />
                 </div>
                 <div className="adv-seg-group">

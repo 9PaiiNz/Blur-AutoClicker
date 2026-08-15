@@ -11,6 +11,26 @@ struct GithubRelease {
 }
 
 #[tauri::command]
+pub async fn fetch_changelog() -> AppResult<String> {
+    let url = "https://raw.githubusercontent.com/Blur009/Blur-AutoClicker/main/CHANGELOG.md";
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(url)
+        .header(USER_AGENT, "BlurAutoClicker")
+        .send()
+        .await
+        .map_err(|e| AppError::Network(format!("Network error: {}", e)))?
+        .error_for_status()
+        .map_err(|e| AppError::Network(format!("HTTP error: {}", e)))?;
+
+    response
+        .text()
+        .await
+        .map_err(|e| AppError::Network(format!("Failed to read changelog: {}", e)))
+}
+
+#[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> AppResult<Option<CheckUpdateResult>> {
     let current_version = app.config().version.clone().unwrap_or("0.0.0".into());
     let url = "https://api.github.com/repos/Blur009/Blur-AutoClicker/releases/latest";

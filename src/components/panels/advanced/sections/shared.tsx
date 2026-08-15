@@ -13,7 +13,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { normalizeIntegerRaw } from "../../../../numberInput";
+import {
+  normalizeIntegerRaw,
+  normalizeDecimalRaw,
+} from "../../../../numberInput";
 import UnavailableReason from "../../../UnavailableReason";
 
 import "./shared.css";
@@ -114,6 +117,7 @@ export function NumInput({
   max,
   style,
   hoverWheel = true,
+  allowDecimal = false,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -121,9 +125,11 @@ export function NumInput({
   max?: number;
   style?: CSSProperties;
   hoverWheel?: boolean;
+  allowDecimal?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const wheelRef = useRef(false);
+  const normalize = allowDecimal ? normalizeDecimalRaw : normalizeIntegerRaw;
   const clampValue = (next: number) => {
     let clamped = next;
     if (min !== undefined && clamped < min) clamped = min;
@@ -136,16 +142,19 @@ export function NumInput({
       if (ref.current) ref.current.value = String(value);
       return;
     }
-    const raw = normalizeIntegerRaw(e.target.value);
+    const raw = normalize(e.target.value);
     if (raw !== e.target.value) {
       e.target.value = raw;
     }
-    const val = raw === "" || raw === "-" ? 0 : Number(raw);
-    onChange(val);
+    if (raw === "" || raw === "-" || raw === "." || raw === "-.") {
+      return;
+    }
+    const val = Number(raw);
+    onChange(Number.isNaN(val) ? (min ?? 0) : val);
   };
 
   const handleBlur = (e: FocusEvent<HTMLInputElement>) => {
-    const raw = normalizeIntegerRaw(e.target.value);
+    const raw = normalize(e.target.value);
     if (raw !== e.target.value) {
       e.target.value = raw;
     }

@@ -39,12 +39,14 @@ function PageAppearanceControls({
   const winOpacityKey = `windowOpacity${suffix}` as keyof Settings;
   const panelOpacityKey = `panelOpacity${suffix}` as keyof Settings;
   const panelBlurKey = `panelBlur${suffix}` as keyof Settings;
+  const bgBlurKey = `backgroundBlur${suffix}` as keyof Settings;
 
   const bgImage = settings[bgImageKey] as string;
   const bgOpacity = settings[bgOpacityKey] as number;
   const winOpacity = settings[winOpacityKey] as number;
   const panelOpacity = settings[panelOpacityKey] as number;
   const panelBlur = settings[panelBlurKey] as number;
+  const bgBlur = settings[bgBlurKey] as number;
 
   const handleBrowse = async () => {
     try {
@@ -154,6 +156,27 @@ function PageAppearanceControls({
             }
           />
           <span className="settings-slider-value">{panelOpacity}%</span>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-label-group">
+          <span className="settings-label">Background Blur</span>
+          <span className="settings-sublabel">
+            Blur the background image itself, across the whole UI.
+          </span>
+        </div>
+        <div className="settings-opacity-controls">
+          <input
+            type="range"
+            className="settings-opacity-slider"
+            min="0"
+            max="20"
+            value={bgBlur}
+            disabled={!bgImage}
+            onChange={(e) => update({ [bgBlurKey]: Number(e.target.value) })}
+          />
+          <span className="settings-slider-value">{bgBlur}px</span>
         </div>
       </div>
 

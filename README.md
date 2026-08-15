@@ -93,3 +93,16 @@ Yes — see <a href="BUILDING.md">BUILDING.md</a> for setup, build, and validati
 ## License
 
 Licensed under the [GNU General Public License](LICENSE).
+
+## Note
+This project has been accepted into Windows Package Manager (winget). You can install it with the command:
+
+```powershell
+winget install -e --id Blur009.BlurAutoClicker --source winget --silent
+```
+---
+It has also been accepted into **Chris Titus Tech's winutils**.
+https://github.com/ChrisTitusTech/winutil/pull/4383
+
+---
+This project is not code signed, so Windows may show a SmartScreen warning. See [microsoft](https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/) for information on SmartScreen. Importantly, a SmartScreen warning does not mean the software is malicious, it just means it is not code signed which is an expensive process.

@@ -124,6 +124,7 @@ const DEFAULT_APP_INFO: AppInfo = {
   version: APP_VERSION,
   updateStatus: "Update checks are disabled in development",
   screenshotProtectionSupported: false,
+  portable: false,
 };
 
 async function syncSettingsToBackend(settings: Settings) {
@@ -722,7 +723,7 @@ export default function App() {
 
           let hydratedSettings = loadedSettings;
 
-          let registeredHotkey = loadedSettings.hotkey;
+          let registeredHotkey: string;
           try {
             registeredHotkey = await registerHotkeyCandidate(
               loadedSettings.hotkey,
@@ -1161,6 +1162,10 @@ export default function App() {
       "--bg-panel-blur",
       `${resolvePerPage(settings, settings.panelBlur, `panelBlur${sfx}`)}px`,
     );
+    root.style.setProperty(
+      "--bg-image-blur",
+      `${resolvePerPage(settings, settings.backgroundBlur, `backgroundBlur${sfx}`)}px`,
+    );
 
     return () => {
       root.style.removeProperty("--bg-base");
@@ -1169,12 +1174,14 @@ export default function App() {
       root.style.removeProperty("--bg-input");
       root.style.removeProperty("--bg-input-off");
       root.style.removeProperty("--bg-panel-blur");
+      root.style.removeProperty("--bg-image-blur");
     };
   }, [
     settings,
     settings.windowOpacity,
     settings.panelOpacity,
     settings.panelBlur,
+    settings.backgroundBlur,
     settings.theme,
     settings.perPageAppearance,
     settings.panelOpacitySimple,
@@ -1187,6 +1194,11 @@ export default function App() {
     settings.panelBlurZones,
     settings.panelBlurClickPoints,
     settings.panelBlurSettings,
+    settings.backgroundBlurSimple,
+    settings.backgroundBlurAdvanced,
+    settings.backgroundBlurZones,
+    settings.backgroundBlurClickPoints,
+    settings.backgroundBlurSettings,
     settings.windowOpacitySimple,
     settings.windowOpacityAdvanced,
     settings.windowOpacityZones,
@@ -1267,16 +1279,19 @@ export default function App() {
     tab,
   ]);
 
-  const handleTabChange = (nextTab: Tab) => {
-    setTab(nextTab);
+  const handleTabChange = useCallback(
+    (nextTab: Tab) => {
+      setTab(nextTab);
 
-    if (nextTab === "settings") return;
-    if (committedSettingsRef.current.lastPanel === nextTab) return;
+      if (nextTab === "settings") return;
+      if (committedSettingsRef.current.lastPanel === nextTab) return;
 
-    updateSettings({
-      lastPanel: nextTab,
-    });
-  };
+      updateSettings({
+        lastPanel: nextTab,
+      });
+    },
+    [updateSettings],
+  );
 
   const handleResetSettings = async () => {
     try {
@@ -1317,7 +1332,10 @@ export default function App() {
   }, []);
 
   const handleTabChangeRef = useRef(handleTabChange);
-  handleTabChangeRef.current = handleTabChange;
+
+  useEffect(() => {
+    handleTabChangeRef.current = handleTabChange;
+  }, [handleTabChange]);
 
   const keybindMapRef = useRef<Record<string, Tab>>({});
 
@@ -1411,6 +1429,7 @@ export default function App() {
           key={`${updateInfo.currentVersion}:${updateInfo.latestVersion}`}
           currentVersion={updateInfo.currentVersion}
           latestVersion={updateInfo.latestVersion}
+          portable={appInfo.portable}
         />
       )}
       <main className="panel-area">

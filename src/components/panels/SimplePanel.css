@@ -45,6 +45,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
+  backdrop-filter: blur(var(--bg-panel-blur, 0px));
   box-sizing: border-box;
   min-width: 0;
 }
@@ -95,20 +96,6 @@
   max-width: 8.125rem;
   overflow: hidden;
   flex-shrink: 1;
-}
-
-.faderbox::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    transparent,
-    var(--bg-surface)
-  );
-  z-index: 1;
-  pointer-events: none;
 }
 
 .simple-inline-input {
@@ -294,8 +281,8 @@
 }
 
 .simple-cadence-input {
-  width: 3ch;
-  min-width: 3ch;
+  width: 5ch;
+  min-width: 5ch;
 }
 
 .simple-duration-group {

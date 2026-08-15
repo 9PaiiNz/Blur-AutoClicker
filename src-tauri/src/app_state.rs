@@ -62,4 +62,12 @@ pub struct AppInfoPayload {
     pub version: String,
     pub update_status: String,
     pub screenshot_protection_supported: bool,
+    pub portable: bool,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableInfo {
+    pub portable: bool,
+    pub data_dir: Option<String>,
 }

@@ -15,9 +15,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -64,19 +64,23 @@ jobs:
             gh release edit "${{ github.ref_name }}" --notes-file release_body.md
           }
 
-      - name: Create portable zip
+      - name: Create portable package
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "src-tauri/target/release" -Filter "BlurAutoClicker.exe" | Select-Object -First 1
-          if (-not $exe) { Write-Error "BlurAutoClicker.exe not found"; exit 1 }
-          $tag = "${{ github.ref_name }}"
-          $zipName = "BlurAutoClicker-${tag}-portable.zip"
-          Compress-Archive -Path $exe.FullName -DestinationPath $zipName
-          Add-Content -Path $env:GITHUB_ENV -Value "ZIP_PATH=$zipName"
+          & "${{ github.workspace }}/scripts/package-portable.ps1" `
+            -RepoRoot "${{ github.workspace }}" `
+            -Tag "${{ github.ref_name }}"
 
-      - name: Upload portable zip to release
+      - name: Upload portable package
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" "$env:ZIP_PATH" --clobber
+          # The bare exe is an upgrade drop for EXISTING portable folders
+          # (it has no marker/DLLs/bootstrapper); the zip is the full build.
+          $portableExe = "BlurAutoClicker-${{ github.ref_name }}-portable.exe"
+          Copy-Item "src-tauri/target/release/BlurAutoClicker.exe" $portableExe -Force
+          gh release upload "${{ github.ref_name }}" `
+            "BlurAutoClicker-${{ github.ref_name }}-portable.zip" `
+            $portableExe `
+            --clobber

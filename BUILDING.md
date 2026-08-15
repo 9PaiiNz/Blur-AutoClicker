@@ -31,6 +31,25 @@ npm run build
 
 The built Windows installer is written to `src-tauri/target/release/bundle/nsis/`.
 
+## Build the portable zip
+
+The portable zip contains the exe plus the VC++ runtime DLLs, crashpad handler
+and WebView2 bootstrapper, and ships a `portable.txt` marker that activates
+portable mode at runtime. Build the release first, then:
+
+```powershell
+npm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1
+```
+
+The zip is written to `BlurAutoClicker-v<version>-portable.zip` in the repo
+root. Running the script locally without `-Tag` defaults the tag to `dev`,
+producing `BlurAutoClicker-vdev-portable.zip`; CI passes the real tag (e.g.
+`-Tag v3.9.1`) so the version in the filename is correct. Portable mode keeps
+all app data (settings, stats, logs, WebView2 user data) inside a `Data/`
+folder next to the exe; there is no in-app auto-update — users download new
+versions from GitHub Releases.
+
 ## Validation
 
 ```powershell

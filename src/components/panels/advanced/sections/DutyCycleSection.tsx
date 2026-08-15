@@ -94,6 +94,7 @@ export default function DutyCycleSection({ settings, update }: Props) {
                 onChange={(v) => update({ dutyCycle: v })}
                 min={SETTINGS_LIMITS.dutyCycle.min}
                 max={SETTINGS_LIMITS.dutyCycle.max}
+                allowDecimal
               />
               <span className="adv-unit">%</span>
             </div>

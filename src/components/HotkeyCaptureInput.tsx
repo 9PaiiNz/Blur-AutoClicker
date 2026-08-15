@@ -108,20 +108,18 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
     }, []);
 
     useEffect(() => {
-      invoke("set_hotkey_capture_active", { active: listening }).catch(
-        (err) => {
-          error(
-            JSON.stringify({
-              source: "HotkeyCaptureInput.toggle",
-              error: String(err),
-            }),
-          );
-        },
-      );
+      if (!listening) return;
+
+      invoke("set_hotkey_capture_active", { active: true }).catch((err) => {
+        error(
+          JSON.stringify({
+            source: "HotkeyCaptureInput.toggle",
+            error: String(err),
+          }),
+        );
+      });
 
       return () => {
-        if (!listening) return;
-
         invoke("set_hotkey_capture_active", { active: false }).catch((err) => {
           error(
             JSON.stringify({
@@ -306,6 +304,14 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
             className="hk-clear-btn"
             onClick={(e) => {
               e.stopPropagation();
+              invoke("stop_clicker").catch((err) => {
+                error(
+                  JSON.stringify({
+                    source: "HotkeyCaptureInput.clearStopClicker",
+                    error: String(err),
+                  }),
+                );
+              });
               onChange("");
             }}
             title="Clear hotkey"

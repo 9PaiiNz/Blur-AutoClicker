@@ -898,7 +898,7 @@ fn run_batch(
 
     let sleep_dur = st.next_batch_time.saturating_duration_since(Instant::now());
     if sleep_dur > Duration::ZERO {
-        sleep_interruptible(sleep_dur, control);
+        sleep_interruptible(sleep_dur, control, should_abort);
     }
 
     if config.use_click_points() {
@@ -1047,12 +1047,21 @@ pub fn get_click_count() -> i64 {
     CLICK_COUNT.load(Ordering::Relaxed)
 }
 
-pub fn sleep_interruptible(remaining: Duration, control: &RunControl) {
+pub fn sleep_interruptible(
+    remaining: Duration,
+    control: &RunControl,
+    should_abort: &dyn Fn() -> bool,
+) {
     let tick = Duration::from_millis(5);
     let start = Instant::now();
+    let mut tick_count = 0u64;
     while control.is_active() && start.elapsed() < remaining {
+        if tick_count.is_multiple_of(2) && should_abort() {
+            return;
+        }
         let left = remaining.saturating_sub(start.elapsed());
         std::thread::sleep(left.min(tick));
+        tick_count += 1;
     }
 }
 

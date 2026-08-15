@@ -1,3 +1,20 @@
+# v3.9.2 - 15.08.2026 (d.m.y)
+## New
+- Added slider to change panel and background blur individually in the appearance settings.
+- Officially added BlurAutoClicker to winget. (winget install -e --id Blur009.BlurAutoClicker --source winget --silent)
+- version 3.9.2 and above will now pull the changelog for the next version so you can preview the changes before updating.
+## Changed
+- Portable build now keeps all data (settings, statistics, diagnostics, WebView2 user data) inside its own folder. Create `portable.txt` with the content `BlurAutoClicker Portable Mode` next to the exe to activate portable mode.
+- Portable build shows `vX.X.X portable (no auto update)` and a "Download from GitHub" button instead of the in-app updater.
+- Portable release artifact now bundles the VC++ runtime DLLs, crashpad handler and WebView2 bootstrapper instead of a bare exe.
+- Included necessary windows dlls in the release build to prevent issues with starting the application on some systems.
+- Included the Webview2 in the release build to prevent issues with starting the application on some systems. (this means the installer is now quite a bit bigger.)
+- A bunch of very small back-end and frontend code improvements and minor behavior changes.
+## Fixed
+- Bottom status bar now blurs the background just like other UI elements.
+- Increased size of simple mode cps input field to prevent the text from being cut off.
+- Hotkey not able to be changed when set to left-click now fixed.
+
 # v3.9.1 - 21.07.2026 (d.m.y)
 ## Fixed
 - Fixed Presets not saving the clicker activation hotkey.

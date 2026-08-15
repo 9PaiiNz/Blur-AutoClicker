@@ -46,7 +46,6 @@ export default function ProcessListSection({ settings, update }: Props) {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     void (async () => {
       try {
         const procs = await invoke<ProcessInfo[]>("list_processes");
@@ -69,15 +68,18 @@ export default function ProcessListSection({ settings, update }: Props) {
   }, [processes, searchQuery, updateListAtBottom]);
 
   const toggleEntry = (name: string, checked: boolean) => {
+    const withoutName = settings.processListEntries.filter(
+      (e) => e.name !== name,
+    );
     const next = checked
       ? [
-          ...settings.processListEntries,
+          ...withoutName,
           {
             name,
             enabled: true,
           } as ProcessListEntry,
         ]
-      : settings.processListEntries.filter((e) => e.name !== name);
+      : withoutName;
     update({ processListEntries: next });
   };
 
@@ -91,7 +93,7 @@ export default function ProcessListSection({ settings, update }: Props) {
     (p) => entryMap.get(p.name)?.enabled && matchesSearch(p),
   );
   const uncheckedProcesses = processes.filter(
-    (p) => !entryMap.has(p.name) && matchesSearch(p),
+    (p) => !entryMap.get(p.name)?.enabled && matchesSearch(p),
   );
 
   return (

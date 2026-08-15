@@ -39,7 +39,6 @@ export default function ProcessListSection({ settings, update }: Props) {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
     void (async () => {
       try {
         const procs = await invoke<ProcessInfo[]>("list_processes");

@@ -1,5 +1,5 @@
 import type { ChangeEvent, FocusEvent, WheelEvent } from "react";
-import { normalizeIntegerRaw } from "../numberInput";
+import { normalizeDecimalRaw, normalizeIntegerRaw } from "../numberInput";
 import {
   convertDurationToRate,
   convertRateToDuration,
@@ -23,6 +23,20 @@ export const SIMPLE_RATE_INPUT_MODE_OPTIONS = [
 export function parseIntegerRaw(raw: string) {
   const normalized = normalizeIntegerRaw(raw);
   return normalized === "" || normalized === "-" ? 0 : Number(normalized);
+}
+
+export function parseDecimalRaw(raw: string) {
+  const normalized = normalizeDecimalRaw(raw);
+  if (
+    normalized === "" ||
+    normalized === "-" ||
+    normalized === "." ||
+    normalized === "-."
+  ) {
+    return 0;
+  }
+  const value = Number(normalized);
+  return Number.isNaN(value) ? 0 : value;
 }
 
 export function clamp(value: number, min: number, max?: number) {
@@ -104,6 +118,19 @@ export function handleNumberBlur(
     event.target.value = normalized;
   }
   apply(clamp(parseIntegerRaw(normalized), min, max));
+}
+
+export function handleDecimalBlur(
+  event: FocusEvent<HTMLInputElement>,
+  min: number,
+  max: number | undefined,
+  apply: (next: number) => void,
+) {
+  const normalized = normalizeDecimalRaw(event.target.value);
+  if (normalized !== event.target.value) {
+    event.target.value = normalized;
+  }
+  apply(clamp(parseDecimalRaw(normalized), min, max));
 }
 
 export function handleDurationBlur(

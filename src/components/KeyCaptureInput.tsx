@@ -5,6 +5,8 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { error } from "@tauri-apps/plugin-log";
 import {
   captureHotkey,
   captureModifierHotkey,
@@ -69,6 +71,30 @@ export default function KeyCaptureInput({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!listening) return;
+
+    invoke("set_hotkey_capture_active", { active: true }).catch((err) => {
+      error(
+        JSON.stringify({
+          source: "KeyCaptureInput.toggle",
+          error: String(err),
+        }),
+      );
+    });
+
+    return () => {
+      invoke("set_hotkey_capture_active", { active: false }).catch((err) => {
+        error(
+          JSON.stringify({
+            source: "KeyCaptureInput.clear",
+            error: String(err),
+          }),
+        );
+      });
+    };
+  }, [listening]);
 
   const displayText = useMemo(() => {
     if (listening) return "Press a key\u2026";
@@ -165,6 +191,14 @@ export default function KeyCaptureInput({
           paddingRight: value && !listening ? "1.25rem" : undefined,
         }}
         onClick={() => {
+          invoke("stop_clicker").catch((err) => {
+            error(
+              JSON.stringify({
+                source: "KeyCaptureInput.stopClicker",
+                error: String(err),
+              }),
+            );
+          });
           setListening(true);
         }}
         onBlur={() => {
@@ -184,6 +218,14 @@ export default function KeyCaptureInput({
           className="hk-clear-btn"
           onClick={(e) => {
             e.stopPropagation();
+            invoke("stop_clicker").catch((err) => {
+              error(
+                JSON.stringify({
+                  source: "KeyCaptureInput.clear",
+                  error: String(err),
+                }),
+              );
+            });
             onChange("");
           }}
           title="Clear key"

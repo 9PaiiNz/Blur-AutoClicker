@@ -25,11 +25,19 @@ fn data_dir() -> Option<PathBuf> {
             return Some(dir);
         }
     }
-    dirs::data_local_dir().map(|d| d.join("BlurAutoClicker"))
+    if crate::portable::is_portable() {
+        crate::portable::data_dir()
+    } else {
+        dirs::data_local_dir().map(|d| d.join("BlurAutoClicker"))
+    }
 }
 
 pub fn diagnostics_root() -> Option<PathBuf> {
-    data_dir().map(|d| d.join("Diagnostics"))
+    data_dir().map(|d| diagnostics_root_of(&d))
+}
+
+fn diagnostics_root_of(base: &std::path::Path) -> PathBuf {
+    base.join("Diagnostics")
 }
 
 pub fn logs_dir() -> Option<PathBuf> {
@@ -117,6 +125,16 @@ mod tests {
         assert_eq!(panic_reports_dir().unwrap(), root.join("PanicReports"));
         assert_eq!(app_events_dir().unwrap(), root.join("AppEvents"));
         assert_eq!(exports_dir().unwrap(), root.join("Exports"));
+    }
+
+    #[test]
+    fn portable_layout_resolves_single_level() {
+        let exe_dir = std::path::Path::new(r"C:\apps\Blur");
+        let data = crate::portable::portable_data_dir_of(exe_dir);
+        assert_eq!(
+            diagnostics_root_of(&data),
+            std::path::PathBuf::from(r"C:\apps\Blur\Data\Diagnostics")
+        );
     }
 
     fn with_test_dir(f: impl FnOnce()) {

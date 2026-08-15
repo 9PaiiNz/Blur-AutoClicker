@@ -41,7 +41,7 @@ function formatCpu(
   language: string,
   notAvailable: string,
 ): string {
-  if (cpu < 0) return notAvailable;
+  if (!Number.isFinite(cpu) || cpu < 0) return notAvailable;
   return `${cpu.toLocaleString(language, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -51,11 +51,7 @@ function formatCpu(
 interface Props {
   appInfo: AppInfo;
   updateCheckStatus:
-    | "idle"
-    | "checking"
-    | "available"
-    | "unavailable"
-    | "error";
+    "idle" | "checking" | "available" | "unavailable" | "error";
   onCheckForUpdate: () => void;
 }
 
@@ -165,7 +161,10 @@ export default function GeneralSection({
         <div className="settings-row">
           <div className="settings-label-group settings-label-group--inline">
             <span className="settings-label">Version</span>
-            <span className="settings-value">v{appInfo.version}</span>
+            <span className="settings-value">
+              v{appInfo.version}
+              {appInfo.portable ? " portable (no auto update)" : ""}
+            </span>
           </div>
           <div className="settings-row-actions">
             <button

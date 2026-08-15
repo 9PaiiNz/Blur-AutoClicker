@@ -6,7 +6,7 @@ import {
   convertRateToDuration,
   type CadenceDurationFields,
 } from "../../cadence";
-import { normalizeIntegerRaw } from "../../numberInput";
+import { normalizeDecimalRaw } from "../../numberInput";
 import {
   getMaxClickSpeed,
   getMinIntervalMs,
@@ -20,6 +20,7 @@ import {
   dynamicChWidth,
   handleDurationBlur,
   handleDurationWheelStep,
+  handleDecimalBlur,
   handleNumberBlur,
   handleNumberChange,
   handleWheelStep,
@@ -104,30 +105,34 @@ export default function SimpleCadenceInput({ settings, update }: Props) {
       {settings.rateInputMode === "rate" ? (
         <div className="simple-cadence-row">
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="simple-inline-input simple-cadence-input"
             value={draftCps ?? settings.clickSpeed}
-            min={1}
-            max={maxClickSpeed}
             aria-label="Clicks Per"
             onChange={(event) => {
               const raw = event.target.value;
-              if (raw === "") {
-                setDraftCps("");
-              } else {
-                const normalized = normalizeIntegerRaw(raw);
-                if (normalized !== raw) event.target.value = normalized;
-                if (normalized === "" || normalized === "-") {
-                  setDraftCps(normalized);
-                  return;
-                }
-                setDraftCps(null);
-                updateSimpleCadence({ clickSpeed: Number(normalized) });
+              const normalized = normalizeDecimalRaw(raw);
+              if (normalized !== raw) event.target.value = normalized;
+              if (
+                normalized === "" ||
+                normalized === "-" ||
+                normalized === "." ||
+                normalized === "-." ||
+                normalized.endsWith(".")
+              ) {
+                setDraftCps(normalized);
+                return;
               }
+              setDraftCps(null);
+              const val = Number(normalized);
+              updateSimpleCadence({
+                clickSpeed: Number.isNaN(val) ? 1 : val,
+              });
             }}
             onBlur={(event) => {
               setDraftCps(null);
-              handleNumberBlur(event, 1, maxClickSpeed, (next) =>
+              handleDecimalBlur(event, 1, maxClickSpeed, (next) =>
                 updateSimpleCadence({ clickSpeed: next }),
               );
             }}

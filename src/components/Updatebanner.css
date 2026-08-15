@@ -68,3 +68,7 @@
 .update-banner-status[data-stage="restart-required"] {
   color: var(--status-success);
 }
+
+.update-banner-preview-btn {
+  margin-left: 0.125rem;
+}
