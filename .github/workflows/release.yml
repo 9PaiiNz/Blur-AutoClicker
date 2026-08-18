@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   release:
@@ -53,7 +54,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: BlurAutoClicker ${{ github.ref_name }}
           releaseBody: See CHANGELOG.md for details.
-          releaseDraft: true
+          releaseDraft: false
 
       - name: Update release body from changelog
         shell: pwsh
@@ -79,3 +80,56 @@ jobs:
           gh release upload "${{ github.ref_name }}" `
             "BlurAutoClicker-${{ github.ref_name }}-portable.zip" `
             --clobber
+
+  winget:
+    name: Submit to winget-pkgs
+    runs-on: windows-latest
+    needs: release
+    if: ${{ startsWith(github.ref_name, 'v') && !contains(github.ref_name, '-') }}
+    env:
+      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+    steps:
+      - name: Derive version (strip leading v from tag)
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Write-Output "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
+      - name: Find NSIS installer asset
+        id: asset
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $release = gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | ConvertFrom-Json
+          $installer = $release.assets | Where-Object { $_.name -like '*_x64-setup.exe' } | Select-Object -First 1
+          if (-not $installer) { throw 'No NSIS installer asset found' }
+          Write-Output "url=$($installer.browser_download_url)" >> $env:GITHUB_OUTPUT
+
+      - name: Download wingetcreate
+        run: curl.exe -JLO https://aka.ms/wingetcreate/latest
+
+      - name: Update manifest and submit PR
+        shell: pwsh
+        run: |
+          .\wingetcreate.exe update Blur009.BlurAutoClicker `
+            --version "${{ steps.version.outputs.version }}" `
+            --urls "${{ steps.asset.outputs.url }}" `
+            --submit
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create `
+            --title "WinGet submission failed for ${{ github.ref_name }}" `
+            --body "The winget-pkgs PR submission failed on release **${{ github.ref_name }}**.
+
+          Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for logs.
+
+          Common causes:
+          - \`WINGET_CREATE_GITHUB_TOKEN\` secret is missing or expired.
+          - The \`*_x64-setup.exe\` asset was not found on the release.
+          - winget-pkgs rejected the manifest (see the PR if one was opened)."
