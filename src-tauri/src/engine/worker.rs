@@ -2,8 +2,6 @@ use std::f64::consts::PI;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use image::ImageEncoder;
-use tauri::image::Image;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::engine::start_clicker as engine_start;
@@ -14,7 +12,7 @@ use crate::error::AppResult;
 use crate::ClickerSettings;
 use crate::ClickerStatusPayload;
 use crate::STATUS_EVENT;
-use crate::{ClickerState, IconState};
+use crate::ClickerState;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 
 use super::cycle::ClickCyclePlan;
@@ -32,141 +30,6 @@ use super::ClickerConfig;
 use super::NtSetTimerResolution;
 use super::RunOutcome;
 use super::CLICK_COUNT;
-
-const ICON_ACTIVATED_DARK: &[u8] = include_bytes!("../../icons/icon-activated-dark.ico");
-const ICON_ACTIVATED_LIGHT: &[u8] = include_bytes!("../../icons/Icon-activated-light.ico");
-const ICON_DEACTIVATED_DARK: &[u8] = include_bytes!("../../icons/icon-deactivated-dark.ico");
-const ICON_DEACTIVATED_LIGHT: &[u8] = include_bytes!("../../icons/Icon-deactivated-light.ico");
-const MASK_PNG_BYTES: &[u8] = include_bytes!("../../icons/icon-mask.png");
-
-fn tint_icon(base_ico: &[u8], mask_png: &[u8], hex_color: &str) -> Option<Vec<u8>> {
-    let hex = hex_color.trim_start_matches('#');
-    if hex.len() < 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-
-    let base = image::load_from_memory(base_ico).ok()?.to_rgba8();
-    let mask = image::load_from_memory(mask_png).ok()?.to_rgba8();
-    let (w, h) = base.dimensions();
-    let mw = mask.width().min(w);
-    let mh = mask.height().min(h);
-
-    let mut out = base;
-    for y in 0..mh {
-        for x in 0..mw {
-            let mp = mask.get_pixel(x, y);
-            if mp[0] > 200 && mp[1] > 200 && mp[2] > 200 && mp[3] > 128 {
-                let p = out.get_pixel_mut(x, y);
-                p[0] = r;
-                p[1] = g;
-                p[2] = b;
-            }
-        }
-    }
-
-    let mut buf = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
-    let color_type = image::ExtendedColorType::Rgba8;
-    encoder.write_image(&out, w, h, color_type).ok()?;
-    Some(buf)
-}
-
-fn resolve_icon_theme(icon_state: &IconState) -> String {
-    if icon_state.icon_theme == "auto" {
-        icon_state.theme.clone()
-    } else {
-        icon_state.icon_theme.clone()
-    }
-}
-
-pub fn set_app_icons(app: &AppHandle) {
-    let state = app.state::<ClickerState>();
-    let active = state.running.load(Ordering::SeqCst);
-    let icon_state = state.icon_state.lock().unwrap_or_else(poisoned_inner);
-    let is_dark = resolve_icon_theme(&icon_state) == "dark";
-
-    if active {
-        let storage = if is_dark {
-            &icon_state.active_icon_dark
-        } else {
-            &icon_state.active_icon_light
-        };
-        if let Some(bytes) = storage.as_deref() {
-            if let Ok(img) = Image::from_bytes(bytes) {
-                drop(icon_state);
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_icon(img.clone());
-                }
-                if let Some(tray) = app.tray_by_id("main") {
-                    let _ = tray.set_icon(Some(img));
-                }
-                return;
-            }
-        }
-    }
-
-    let bytes: &[u8] = if active {
-        if is_dark {
-            ICON_ACTIVATED_DARK
-        } else {
-            ICON_ACTIVATED_LIGHT
-        }
-    } else {
-        if is_dark {
-            ICON_DEACTIVATED_DARK
-        } else {
-            ICON_DEACTIVATED_LIGHT
-        }
-    };
-
-    let Ok(img) = Image::from_bytes(bytes) else {
-        return;
-    };
-
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_icon(img.clone());
-    }
-    if let Some(tray) = app.tray_by_id("main") {
-        let _ = tray.set_icon(Some(img));
-    }
-}
-
-pub fn set_icon_theme_inner(
-    app: &AppHandle,
-    hex_color: &str,
-    theme: &str,
-    icon_enabled: bool,
-    icon_theme: &str,
-    icon_color: &str,
-) {
-    let state = app.state::<ClickerState>();
-
-    let use_tint = icon_enabled && icon_color == "theme";
-
-    let (dark, light) = if use_tint {
-        (
-            tint_icon(ICON_ACTIVATED_DARK, MASK_PNG_BYTES, hex_color),
-            tint_icon(ICON_ACTIVATED_LIGHT, MASK_PNG_BYTES, hex_color),
-        )
-    } else {
-        (None, None)
-    };
-
-    let mut icon_state = state.icon_state.lock().unwrap_or_else(poisoned_inner);
-    icon_state.accent_color = hex_color.to_string();
-    icon_state.theme = theme.to_string();
-    icon_state.icon_enabled = icon_enabled;
-    icon_state.icon_theme = icon_theme.to_string();
-    icon_state.icon_color = icon_color.to_string();
-    icon_state.active_icon_dark = dark;
-    icon_state.active_icon_light = light;
-    drop(icon_state);
-
-    set_app_icons(app);
-}
 
 // -- CPU measurement --
 // changed from normal cpu measurement because it was not accurately
@@ -334,7 +197,7 @@ pub fn start_clicker_inner(app: &AppHandle) -> AppResult<ClickerStatusPayload> {
     let app_handle = app.clone();
 
     let payload = current_status(app);
-    set_app_icons(app);
+    crate::icon::set_app_icons(app);
     emit_status(app);
 
     std::thread::spawn(move || {
@@ -354,7 +217,7 @@ pub fn start_clicker_inner(app: &AppHandle) -> AppResult<ClickerStatusPayload> {
         state.active_click_point_index.store(-1, Ordering::SeqCst);
         state.active_click_point_tick.store(0, Ordering::SeqCst);
 
-        set_app_icons(&app_handle);
+        crate::icon::set_app_icons(&app_handle);
 
         *state.stop_reason.lock().unwrap_or_else(poisoned_inner) =
             Some(outcome.stop_reason.clone());
@@ -385,7 +248,7 @@ pub fn stop_clicker_inner(
     *state.warning.lock().unwrap_or_else(poisoned_inner) = None;
     let payload = current_status(app);
     if was_running {
-        set_app_icons(app);
+        crate::icon::set_app_icons(app);
     }
     emit_status(app);
     Ok(payload)
@@ -596,8 +459,15 @@ pub fn current_status(app: &AppHandle) -> ClickerStatusPayload {
     }
 }
 
+// Marshaled to the main thread: `emit` is safe from any thread, but routing
+// through the main thread keeps all status/icon updates on one thread and
+// avoids any cross-thread window API surprises (issue https://github.com/Blur009/Blur-AutoClicker/issues/273).
 pub fn emit_status(app: &AppHandle) {
-    let _ = app.emit(STATUS_EVENT, current_status(app));
+    let app = app.clone();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = handle.emit(STATUS_EVENT, current_status(&handle));
+    });
 }
 
 pub fn toggle_clicker_inner(app: &AppHandle) -> AppResult<ClickerStatusPayload> {

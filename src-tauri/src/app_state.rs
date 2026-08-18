@@ -1,5 +1,6 @@
 use crate::hotkeys::HotkeyBinding;
 use crate::ClickerSettings;
+use crate::icon::IconCache;
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64};
 use std::sync::{Arc, Mutex};
@@ -10,8 +11,6 @@ pub struct IconState {
     pub icon_enabled: bool,
     pub icon_theme: String,
     pub icon_color: String,
-    pub active_icon_dark: Option<Vec<u8>>,
-    pub active_icon_light: Option<Vec<u8>>,
 }
 
 pub struct ClickerState {
@@ -34,6 +33,7 @@ pub struct ClickerState {
     pub zone_started_clicker: AtomicBool,
     pub warning: Mutex<Option<String>>,
     pub icon_state: Mutex<IconState>,
+    pub icon_cache: Mutex<IconCache>,
 }
 
 #[derive(Clone, serde::Serialize)]

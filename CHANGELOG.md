@@ -1,3 +1,7 @@
+# v3.9.3 - 18.08.2026 (d.m.y)
+## Fixed
+- Fixed Taskbar Icon not changing color which should hopefully fix ui crashes on some systems.
+
 # v3.9.2 - 15.08.2026 (d.m.y)
 ## New
 - Added slider to change panel and background blur individually in the appearance settings.
