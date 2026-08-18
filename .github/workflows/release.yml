@@ -16,23 +16,23 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: './src-tauri -> target'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Extract changelog
         shell: pwsh
@@ -46,7 +46,7 @@ jobs:
           }
 
       - name: Build
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -89,6 +89,8 @@ jobs:
     env:
       WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
       - name: Derive version (strip leading v from tag)
         id: version
         shell: pwsh
@@ -110,13 +112,44 @@ jobs:
       - name: Download wingetcreate
         run: curl.exe -JLO https://aka.ms/wingetcreate/latest
 
-      - name: Update manifest and submit PR
+      - name: Generate manifest locally
         shell: pwsh
         run: |
           .\wingetcreate.exe update Blur009.BlurAutoClicker `
             --version "${{ steps.version.outputs.version }}" `
             --urls "${{ steps.asset.outputs.url }}" `
-            --submit
+            --out ./winget-manifests
+
+      - name: Extract release notes
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $content = Get-Content CHANGELOG.md -Raw
+          $pattern = "(?ms)# v$version .*?(?=\n# v|\z)"
+          $match = [regex]::Match($content, $pattern)
+          if ($match.Success) {
+            Set-Content -Path release_notes.md -Value $match.Value.Trim()
+          } else {
+            Set-Content -Path release_notes.md -Value "See https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          }
+
+      - name: Inject ReleaseNotes
+        shell: pwsh
+        run: |
+          $notes = Get-Content release_notes.md -Raw
+          $locale = Get-ChildItem ./winget-manifests -Recurse -Filter "*.locale.*.yaml" | Select-Object -First 1
+          if (-not $locale) { throw 'No locale manifest found to add ReleaseNotes' }
+          $body = ($notes.TrimEnd() -split "`n") |
+            Where-Object { $_ -notmatch '^#\s*v\d' } |
+            ForEach-Object { "  " + ($_ -replace "`t", "    ").TrimEnd() }
+          $block = "ReleaseNotes: |`n" + ($body -join "`n") + "`n"
+          Add-Content -Path $locale.FullName -Value $block
+
+      - name: Submit PR to winget-pkgs
+        shell: pwsh
+        run: |
+          .\wingetcreate.exe submit --no-open `
+            ./winget-manifests
 
       - name: Open issue on failure
         if: failure()

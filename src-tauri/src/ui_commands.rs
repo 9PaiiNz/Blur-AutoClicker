@@ -343,7 +343,18 @@ pub fn set_accent_color(
     icon_theme: String,
     icon_color: String,
 ) -> AppResult<()> {
-    crate::icon::set_icon_theme(&app, &color, &theme, icon_enabled, &icon_theme, &icon_color);
+    let handle = app.clone();
+    let closure_handle = handle.clone();
+    let _ = handle.run_on_main_thread(move || {
+        crate::icon::set_icon_theme(
+            &closure_handle,
+            &color,
+            &theme,
+            icon_enabled,
+            &icon_theme,
+            &icon_color,
+        );
+    });
     Ok(())
 }
 

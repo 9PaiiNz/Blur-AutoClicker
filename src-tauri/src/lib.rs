@@ -73,13 +73,58 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
             .maximizable(false)
             .shadow(false);
 
+    // Set our own icon at creation so Windows associates the window with it
+    // rather than the bundled EXE icon resource (which can shadow runtime
+    // updates in release builds).
+    if let Some(icon) = crate::icon::default_icon_image() {
+        builder = builder.icon(icon)?;
+    }
+
     if let Some(dir) = crate::portable::webview_dir("main") {
         log::info!("[Window] Main window webview data dir: {}", dir.display());
         builder = builder.data_directory(dir);
     }
 
-    builder.build()?;
+    let window = builder.build()?;
+
+    // Re-apply the window icon once the window is registered with the taskbar
+    // (first focus/resize), because Explorer may have cached the EXE icon into
+    // the taskbar slot before our WM_SETICON at creation arrived.
+    #[cfg(target_os = "windows")]
+    {
+        let applied = std::sync::atomic::AtomicBool::new(false);
+        let handle = app.handle().clone();
+        window.on_window_event(move |event| {
+            let fire = matches!(
+                event,
+                tauri::WindowEvent::Focused(true) | tauri::WindowEvent::Resized(_)
+            ) && !applied.swap(true, std::sync::atomic::Ordering::SeqCst);
+            if fire {
+                crate::icon::set_app_icons(&handle);
+            }
+        });
+    }
+
     Ok(())
+}
+
+#[cfg(windows)]
+fn set_app_aumid() {
+    use windows_sys::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+    // A stable, explicit AppUserModelID so Windows Explorer does not group or
+    // cache this app under the bundled EXE icon, which otherwise shadows
+    // runtime icon updates in release builds.
+    let wide: Vec<u16> = "BlurAutoClicker.App"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let hr = SetCurrentProcessExplicitAppUserModelID(wide.as_ptr());
+        if hr < 0 {
+            log::warn!("[icon] SetCurrentProcessExplicitAppUserModelID failed: HRESULT {hr:#x}");
+        }
+    }
 }
 
 fn setup_panic_hook() {
@@ -157,7 +202,11 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
     let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
     TrayIconBuilder::with_id("main")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(
+            crate::icon::default_icon_image()
+                .or_else(|| app.default_window_icon().cloned())
+                .expect("no window icon available for tray"),
+        )
         .menu(&menu)
         .tooltip("BlurAutoClicker")
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -385,6 +434,8 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             setup_logging(&handle);
+            #[cfg(windows)]
+            set_app_aumid();
 
             if !crate::portable::is_portable() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

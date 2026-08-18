@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /.github/workflows
+    target-branch: "dev"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: /
+    target-branch: "dev"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: fix
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: "/src-tauri"
+    target-branch: "dev"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: fix
+    open-pull-requests-limit: 10

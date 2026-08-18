@@ -1,6 +1,6 @@
 [package]
 name = "BlurAutoClicker"
-version = "3.9.3"
+version = "3.9.4"
 description = "BlurAutoClicker - accuracy and performance focused auto clicker for Windows."
 authors = ["Blur009"]
 license = "GPL-3.0"
@@ -60,7 +60,8 @@ crashpad = ["crashpad-rs"]
 [profile.release]
 opt-level = 3
 strip = "symbols"
-lto = "fat"
+lto = "thin"
 codegen-units = 1
-debug = true
+debug = "line-tables-only"
 incremental = false
+panic = "unwind"

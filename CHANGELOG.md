@@ -1,3 +1,7 @@
+# v3.9.4 - 18.08.2026 (d.m.y)
+## Fixed
+- Fixed Taskbar Icon not changing color (again.. hopefully for real this time).
+
 # v3.9.3 - 18.08.2026 (d.m.y)
 ## Fixed
 - Fixed Taskbar Icon not changing color which should hopefully fix ui crashes on some systems.
