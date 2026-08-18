@@ -155,6 +155,15 @@ pub fn decode_icon(bytes: &[u8]) -> Result<RgbaImage, IconError> {
         .map_err(|e| IconError::Decode(e.to_string()))
 }
 
+/// Default (deactivated) icon as a Tauri `Image`. Used to set the window/tray
+/// icon at creation time so Windows never associates the running app with the
+/// bundled EXE icon resource (which can shadow later runtime updates).
+pub fn default_icon_image() -> Option<Image<'static>> {
+    let img = decode_icon(ICON_DEACTIVATED_DARK).ok()?;
+    let (w, h) = (img.width(), img.height());
+    Some(Image::new_owned(img.into_raw(), w, h))
+}
+
 pub fn recompute_tint(
     icon_enabled: bool,
     icon_color: &str,
@@ -289,7 +298,13 @@ impl IconBackend for WindowSink {
         let image = Image::new_owned(img.clone().into_raw(), img.width(), img.height());
         self.0
             .set_icon(image)
-            .map_err(|e| IconError::Backend(e.to_string()))
+            .map_err(|e| IconError::Backend(e.to_string()))?;
+        // Tauri's set_icon updates the in-memory icon but Windows keeps showing
+        // the EXE's bundled icon on the taskbar button (which is ICON_BIG). Push
+        // ICON_BIG explicitly so the taskbar reflects the tinted icon.
+        #[cfg(windows)]
+        force_window_icon_big(&self.0, img);
+        Ok(())
     }
 
     fn set_tray_icon(&self, _img: &RgbaImage) -> Result<(), IconError> {
@@ -305,9 +320,143 @@ impl IconBackend for TraySink {
 
     fn set_tray_icon(&self, img: &RgbaImage) -> Result<(), IconError> {
         let image = Image::new_owned(img.clone().into_raw(), img.width(), img.height());
+        // Windows Explorer caches tray icons by the HICON identity. A plain
+        // NIM_MODIFY won't repaint in many cases (notably release builds), so
+        // remove then re-add to force a fresh notification-area icon.
+        let _ = self.0.set_icon(None);
         self.0
             .set_icon(Some(image))
             .map_err(|e| IconError::Backend(e.to_string()))
+    }
+}
+
+#[cfg(windows)]
+fn force_window_icon_big(window: &tauri::WebviewWindow, img: &RgbaImage) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        DestroyIcon, SendMessageW, ICON_BIG, ICON_SMALL, WM_SETICON,
+    };
+
+    // Create distinct handles for small and big so each taskbar slot owns its
+    // own icon and neither handle is double-freed on window teardown.
+    let Some(hicon_small) = rgba_to_hicon(img) else {
+        log::warn!("[icon] force_window_icon_big: small HICON creation failed");
+        return;
+    };
+    let Some(hicon_big) = rgba_to_hicon(img) else {
+        log::warn!("[icon] force_window_icon_big: big HICON creation failed");
+        unsafe { DestroyIcon(hicon_small) };
+        return;
+    };
+    let Ok(hwnd) = window.hwnd() else {
+        log::warn!("[icon] force_window_icon_big: hwnd unavailable");
+        unsafe {
+            DestroyIcon(hicon_small);
+            DestroyIcon(hicon_big);
+        }
+        return;
+    };
+    // Tauri returns the `windows` crate's HWND (newtype over *mut c_void);
+    // `windows-sys` SendMessageW takes its HWND alias (= *mut c_void).
+    let hwnd = hwnd.0;
+    unsafe {
+        // Returns the previous icon handle for each size; destroy it to avoid
+        // exhausting the GDI handle heap across repeated runtime updates.
+        let prev_small = SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, hicon_small as isize);
+        let prev_big = SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, hicon_big as isize);
+        if prev_small != 0 && prev_small != hicon_small as isize {
+            DestroyIcon(prev_small as windows_sys::Win32::UI::WindowsAndMessaging::HICON);
+        }
+        if prev_big != 0 && prev_big != hicon_big as isize && prev_big != prev_small {
+            DestroyIcon(prev_big as windows_sys::Win32::UI::WindowsAndMessaging::HICON);
+        }
+    }
+}
+
+// Premultiply straight RGBA (as the `image` crate stores it) into the BGRA
+// byte order Windows icon bitmaps require, with alpha premultiplied.
+fn premultiply_rgba_to_bgra(raw: &[u8]) -> Vec<u8> {
+    let mut px = Vec::with_capacity(raw.len());
+    for p in raw.chunks_exact(4) {
+        let (r, g, b, a) = (p[0] as u32, p[1] as u32, p[2] as u32, p[3] as u32);
+        px.push(((b * a + 127) / 255) as u8);
+        px.push(((g * a + 127) / 255) as u8);
+        px.push(((r * a + 127) / 255) as u8);
+        px.push(a as u8);
+    }
+    px
+}
+
+// Build an HICON from RGBA via a premultiplied-alpha color bitmap
+// (BITMAPV5HEADER + BI_BITFIELDS + alpha mask). Negative height = top-down
+// DIB, matching the `image` crate's row 0 = top ordering.
+#[cfg(windows)]
+fn rgba_to_hicon(img: &RgbaImage) -> Option<windows_sys::Win32::UI::WindowsAndMessaging::HICON> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, BITMAPV5HEADER,
+        BI_BITFIELDS, DIB_RGB_COLORS, HBITMAP,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, ICONINFO};
+
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let px = premultiply_rgba_to_bgra(img.as_raw());
+
+    let mut bmi: BITMAPV5HEADER = unsafe { std::mem::zeroed() };
+    bmi.bV5Size = std::mem::size_of::<BITMAPV5HEADER>() as u32;
+    bmi.bV5Width = w;
+    bmi.bV5Height = -h; // top-down
+    bmi.bV5Planes = 1;
+    bmi.bV5BitCount = 32;
+    bmi.bV5Compression = BI_BITFIELDS;
+    bmi.bV5RedMask = 0x00FF_0000;
+    bmi.bV5GreenMask = 0x0000_FF00;
+    bmi.bV5BlueMask = 0x0000_00FF;
+    bmi.bV5AlphaMask = 0xFF00_0000;
+
+    let hdc = unsafe { GetDC(std::ptr::null_mut()) };
+    let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+    let hbmp = unsafe {
+        CreateDIBSection(
+            hdc,
+            &bmi as *const _ as *const _,
+            DIB_RGB_COLORS,
+            &mut bits,
+            core::ptr::null_mut(),
+            0,
+        )
+    };
+    if hbmp.is_null() {
+        if !hdc.is_null() {
+            unsafe { ReleaseDC(std::ptr::null_mut(), hdc) };
+        }
+        return None;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(px.as_ptr(), bits as *mut u8, px.len());
+        ReleaseDC(std::ptr::null_mut(), hdc);
+    }
+
+    // Fully-transparent (all-zero) 1bpp mask: the color bitmap's alpha channel
+    // drives transparency.
+    let mask_bytes = (((w + 15) / 16) * 16 / 8 * h) as usize;
+    let mask = vec![0u8; mask_bytes.max(1)];
+    let hmask = unsafe { CreateBitmap(w, h, 1, 1, mask.as_ptr() as *const _) };
+
+    let ii = ICONINFO {
+        fIcon: 1,
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: hmask,
+        hbmColor: hbmp,
+    };
+    let hicon = unsafe { CreateIconIndirect(&ii) };
+    unsafe {
+        DeleteObject(hbmp as HBITMAP);
+        DeleteObject(hmask as HBITMAP);
+    }
+    if hicon.is_null() {
+        None
+    } else {
+        Some(hicon)
     }
 }
 
@@ -322,10 +471,9 @@ fn tauri_backend(app: &AppHandle) -> TauriIconBackend {
 }
 
 pub fn set_app_icons(app: &AppHandle) {
-    let app = app.clone();
     let handle = app.clone();
     // `Err` means the app is shutting down and the main-thread queue is gone.
-    let _ = app.run_on_main_thread(move || {
+    if let Err(e) = app.run_on_main_thread(move || {
         let state = handle.state::<ClickerState>();
         let running = state.running.load(Ordering::SeqCst);
 
@@ -341,10 +489,13 @@ pub fn set_app_icons(app: &AppHandle) {
         };
 
         let cache = state.icon_cache.lock().unwrap_or_else(poisoned_inner);
-        if let Some(decision) = decide_icon(running, icon_enabled, is_dark, &cache) {
+        let decision = decide_icon(running, icon_enabled, is_dark, &cache);
+        if let Some(decision) = decision {
             let _errs = apply_icon(&tauri_backend(&handle), &decision);
         }
-    });
+    }) {
+        log::warn!("[icon] run_on_main_thread failed (closure never ran): {e}");
+    }
 }
 
 pub fn set_icon_theme(
@@ -813,5 +964,57 @@ mod tests {
         assert!(cache.deactivated_light.is_some());
         assert!(cache.active_tint_dark.is_some());
         assert!(cache.active_tint_light.is_some());
+    }
+
+    #[test]
+    fn premultiply_rgba_to_bgra_opaque_red() {
+        // opaque red: B/G swapped to front, premultiplied by 255 == unchanged
+        assert_eq!(
+            premultiply_rgba_to_bgra(&[255, 0, 0, 255]),
+            vec![0, 0, 255, 255]
+        );
+    }
+
+    #[test]
+    fn premultiply_rgba_to_bgra_partial_alpha() {
+        // straight (10,20,30,128) -> premultiplied (b,g,r,a) ~ (15,10,5,128)
+        assert_eq!(
+            premultiply_rgba_to_bgra(&[10, 20, 30, 128]),
+            vec![15, 10, 5, 128]
+        );
+    }
+
+    #[test]
+    fn premultiply_rgba_to_bgra_zero_alpha() {
+        assert_eq!(premultiply_rgba_to_bgra(&[10, 20, 30, 0]), vec![0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn premultiply_rgba_to_bgra_multiple_pixels() {
+        // (255,0,0,255) -> [0,0,255,255]; (0,0,255,128) -> [128,0,0,128]
+        assert_eq!(
+            premultiply_rgba_to_bgra(&[255, 0, 0, 255, 0, 0, 255, 128]),
+            vec![0, 0, 255, 255, 128, 0, 0, 128]
+        );
+    }
+
+    #[test]
+    fn compute_tinted_applies_color() {
+        // #b930df -> (185, 48, 223): high R, low G, high B
+        let out = compute_tinted("#b930df", ICON_ACTIVATED_DARK, MASK_PNG_BYTES)
+            .expect("compute_tinted returned None");
+        let mut tinted = 0u32;
+        let mut total = 0u32;
+        for p in out.pixels() {
+            total += 1;
+            if p[0] > 120 && p[1] < 120 && p[2] > 120 {
+                tinted += 1;
+            }
+        }
+        assert!(total > 0, "icon had no pixels");
+        assert!(
+            tinted > 0,
+            "compute_tinted produced NO tinted (purple) pixels; mask check likely failing (tinted={tinted}/{total})"
+        );
     }
 }
