@@ -52,7 +52,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: BlurAutoClicker ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
           releaseBody: See CHANGELOG.md for details.
           releaseDraft: false
 
