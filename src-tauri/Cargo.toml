@@ -60,7 +60,7 @@ crashpad = ["crashpad-rs"]
 [profile.release]
 opt-level = 3
 strip = "symbols"
-lto = "fat"
+lto = "thin"
 codegen-units = 1
-debug = true
+debug = "line-tables-only"
 incremental = false
