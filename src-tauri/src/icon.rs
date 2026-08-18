@@ -12,11 +12,24 @@ use crate::{ClickerState, IconState};
 
 // `include_bytes!` resolves relative to this file; CARGO_MANIFEST_DIR is
 // `src-tauri`, so the assets live in `src-tauri/icons`.
-const ICON_ACTIVATED_DARK: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/icon-activated-dark.ico"));
-const ICON_ACTIVATED_LIGHT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/Icon-activated-light.ico"));
-const ICON_DEACTIVATED_DARK: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/icon-deactivated-dark.ico"));
-const ICON_DEACTIVATED_LIGHT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/Icon-deactivated-light.ico"));
-const MASK_PNG_BYTES: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/icon-mask.png"));
+const ICON_ACTIVATED_DARK: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/icons/icon-activated-dark.ico"
+));
+const ICON_ACTIVATED_LIGHT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/icons/Icon-activated-light.ico"
+));
+const ICON_DEACTIVATED_DARK: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/icons/icon-deactivated-dark.ico"
+));
+const ICON_DEACTIVATED_LIGHT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/icons/Icon-deactivated-light.ico"
+));
+const MASK_PNG_BYTES: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/icon-mask.png"));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconThemePref {
@@ -70,10 +83,7 @@ pub struct TauriIconBackend {
 }
 
 impl TauriIconBackend {
-    pub fn new(
-        window: Option<Box<dyn IconBackend>>,
-        tray: Option<Box<dyn IconBackend>>,
-    ) -> Self {
+    pub fn new(window: Option<Box<dyn IconBackend>>, tray: Option<Box<dyn IconBackend>>) -> Self {
         Self { window, tray }
     }
 }
@@ -167,9 +177,15 @@ pub fn decide_icon(
     cache: &IconCache,
 ) -> Option<IconDecision> {
     let (deact_same, deact_other) = if is_dark {
-        (cache.deactivated_dark.clone(), cache.deactivated_light.clone())
+        (
+            cache.deactivated_dark.clone(),
+            cache.deactivated_light.clone(),
+        )
     } else {
-        (cache.deactivated_light.clone(), cache.deactivated_dark.clone())
+        (
+            cache.deactivated_light.clone(),
+            cache.deactivated_dark.clone(),
+        )
     };
     let (emb_same, emb_other) = if is_dark {
         (cache.activated_dark.clone(), cache.activated_light.clone())
@@ -177,9 +193,15 @@ pub fn decide_icon(
         (cache.activated_light.clone(), cache.activated_dark.clone())
     };
     let (tint_same, tint_other) = if is_dark {
-        (cache.active_tint_dark.clone(), cache.active_tint_light.clone())
+        (
+            cache.active_tint_dark.clone(),
+            cache.active_tint_light.clone(),
+        )
     } else {
-        (cache.active_tint_light.clone(), cache.active_tint_dark.clone())
+        (
+            cache.active_tint_light.clone(),
+            cache.active_tint_dark.clone(),
+        )
     };
 
     if !running || !icon_enabled {
@@ -422,14 +444,8 @@ mod tests {
             activated_light: decode_icon(ICON_ACTIVATED_LIGHT).ok(),
             deactivated_dark: decode_icon(ICON_DEACTIVATED_DARK).ok(),
             deactivated_light: decode_icon(ICON_DEACTIVATED_LIGHT).ok(),
-            active_tint_dark: recompute_tint(true, "theme", "#22c55e")
-                .0
-                .as_ref()
-                .cloned(),
-            active_tint_light: recompute_tint(true, "theme", "#22c55e")
-                .1
-                .as_ref()
-                .cloned(),
+            active_tint_dark: recompute_tint(true, "theme", "#22c55e").0.as_ref().cloned(),
+            active_tint_light: recompute_tint(true, "theme", "#22c55e").1.as_ref().cloned(),
         }
     }
 

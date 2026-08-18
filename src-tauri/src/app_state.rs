@@ -1,6 +1,6 @@
 use crate::hotkeys::HotkeyBinding;
-use crate::ClickerSettings;
 use crate::icon::IconCache;
+use crate::ClickerSettings;
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64};
 use std::sync::{Arc, Mutex};

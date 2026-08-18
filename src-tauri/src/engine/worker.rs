@@ -10,9 +10,9 @@ use crate::error::poisoned_inner;
 use crate::error::AppError;
 use crate::error::AppResult;
 use crate::ClickerSettings;
+use crate::ClickerState;
 use crate::ClickerStatusPayload;
 use crate::STATUS_EVENT;
-use crate::ClickerState;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 
 use super::cycle::ClickCyclePlan;
