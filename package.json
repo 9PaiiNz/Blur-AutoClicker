@@ -15,8 +15,9 @@
     "preview": "vite preview",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "format:write": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "check": "cargo test --manifest-path src-tauri/Cargo.toml && npm test && npm run lint && npm run format:check && npm run frontend:build && cargo check --manifest-path src-tauri/Cargo.toml --locked && cargo clippy --manifest-path src-tauri/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml --check && npm audit && node -e \"console.log('Tests ran:\\n- cargo test\\n- npm test\\n- eslint\\n- prettier\\n- frontend:build\\n- cargo check\\n- clippy\\n- fmt\\n- npm audit\\nAll passed!')\"",
-    "fix": "cargo fmt --manifest-path src-tauri/Cargo.toml && npm run format:write && eslint --fix . && npm audit fix && node -e \"console.log('Fixed:\\n- cargo fmt\\n- prettier\\n- eslint\\n- npm audit fix\\nAll fixes applied!')\""
+    "check": "node scripts/check.mjs",
+    "fix": "node scripts/fix.mjs",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
@@ -45,6 +46,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "jsdom": "^30.0.1",
+    "lefthook": "^2.1.10",
     "prettier": "^3.8.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.57.0",

@@ -35,6 +35,15 @@ jobs:
       - name: Type check and build
         run: npm run frontend:build
 
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Dependency audit
+        run: npm audit
+
   rust:
     name: Rust (fmt + test)
     runs-on: windows-latest
@@ -61,3 +70,7 @@ jobs:
       - name: Test
         working-directory: src-tauri
         run: cargo test --locked
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked
