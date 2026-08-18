@@ -343,14 +343,7 @@ pub fn set_accent_color(
     icon_theme: String,
     icon_color: String,
 ) -> AppResult<()> {
-    crate::engine::worker::set_icon_theme_inner(
-        &app,
-        &color,
-        &theme,
-        icon_enabled,
-        &icon_theme,
-        &icon_color,
-    );
+    crate::icon::set_icon_theme(&app, &color, &theme, icon_enabled, &icon_theme, &icon_color);
     Ok(())
 }
 

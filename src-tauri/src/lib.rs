@@ -11,6 +11,7 @@ mod click_point_picker;
 mod custom_stop_zone_picker;
 mod engine;
 mod hotkeys;
+mod icon;
 mod overlay;
 mod ui_commands;
 mod updates;
@@ -166,7 +167,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                     #[cfg(target_os = "windows")]
                     apply_ws_ex_noactivate(&window, false);
                     let _ = window.show();
-                    crate::engine::worker::set_app_icons(app);
+                    crate::icon::set_app_icons(app);
                     let _ = window.set_focus();
                 }
             }
@@ -194,7 +195,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                     #[cfg(target_os = "windows")]
                     apply_ws_ex_noactivate(&window, false);
                     let _ = window.show();
-                    crate::engine::worker::set_app_icons(app);
+                    crate::icon::set_app_icons(app);
                     let _ = window.set_focus();
                 }
             }
@@ -352,14 +353,13 @@ fn create_clicker_state() -> ClickerState {
         paused_by_zone: AtomicBool::new(false),
         zone_started_clicker: AtomicBool::new(false),
         warning: Mutex::new(None),
+        icon_cache: Mutex::new(crate::icon::init_icon_cache()),
         icon_state: Mutex::new(IconState {
             accent_color: String::from("#22c55e"),
             theme: String::from("dark"),
             icon_enabled: true,
             icon_theme: String::from("auto"),
             icon_color: String::from("theme"),
-            active_icon_dark: None,
-            active_icon_light: None,
         }),
     }
 }
@@ -435,7 +435,7 @@ pub fn run() {
                 log::warn!("[Crashpad] Failed to initialize: {e}");
             }
             setup_tray(&handle)?;
-            crate::engine::worker::set_icon_theme_inner(
+            crate::icon::set_icon_theme(
                 &handle, "#22c55e", "dark", true, "auto", "theme",
             );
             spawn_overlay_auto_hide(&handle);
