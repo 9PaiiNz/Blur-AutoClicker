@@ -29,6 +29,46 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
+#[cfg(target_os = "windows")]
+fn disable_browser_accelerator_keys(window: &tauri::WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use windows_core::Interface;
+
+    let _ = window.with_webview(|webview| {
+        let controller = webview.controller();
+        let core = match unsafe { controller.CoreWebView2() } {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("[WebView2] Failed to get CoreWebView2: {e:?}");
+                return;
+            }
+        };
+        let settings = match unsafe { core.Settings() } {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[WebView2] Failed to get Settings: {e:?}");
+                return;
+            }
+        };
+
+        // Cast to ICoreWebView2Settings3 to disable browser accelerator keys
+        if let Ok(settings3) = settings.cast::<ICoreWebView2Settings3>() {
+            match unsafe { settings3.SetAreBrowserAcceleratorKeysEnabled(false) } {
+                Ok(()) => {
+                    log::info!("[WebView2] Browser accelerator keys disabled (F6, Ctrl+F, etc.)")
+                }
+                Err(e) => {
+                    log::warn!("[WebView2] Failed to disable browser accelerator keys: {e:?}")
+                }
+            }
+        } else {
+            log::warn!(
+                "[WebView2] ICoreWebView2Settings3 not available (WebView2 runtime too old?)"
+            );
+        }
+    });
+}
+
 pub static ZONE_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
 const STATUS_EVENT: &str = "clicker-status";
@@ -370,6 +410,9 @@ fn setup_frontend_listener(app: &AppHandle) {
         if let Some(window) = overlay_init_handle.get_webview_window("main") {
             apply_ws_ex_noactivate(&window, false);
             log::info!("[Window] Cleared WS_EX_NOACTIVATE on main window");
+            // Apply here (not at window creation) so CoreWebView2 is guaranteed
+            // to exist — applying earlier can silently no-op and leave F6 crashing.
+            disable_browser_accelerator_keys(&window);
         }
     });
 }

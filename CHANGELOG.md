@@ -1,3 +1,7 @@
+# v3.9.5 - 19.08.2026 (d.m.y)
+## Fixed
+- Disabled default browser shortcuts (F6, Ctrl+F, etc.) to prevent the UI from crashing when the window is focused.(software dev is a joke, i know)
+
 # v3.9.4 - 18.08.2026 (d.m.y)
 ## Fixed
 - Fixed Taskbar Icon not changing color (again.. hopefully for real this time).
