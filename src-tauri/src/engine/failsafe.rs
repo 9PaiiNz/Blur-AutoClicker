@@ -88,8 +88,10 @@ pub fn detect_failsafe(
     monitors: &[VirtualScreenRect],
     config: &ClickerConfig,
 ) -> Option<String> {
-    if let Some((ZoneAction::Stop, _)) = detect_stop_zones(cursor, config) {
-        return Some(String::from("Custom stop zone failsafe"));
+    if config.stop_zones_enabled {
+        if let Some((ZoneAction::Stop, _)) = detect_stop_zones(cursor, config) {
+            return Some(String::from("Custom stop zone failsafe"));
+        }
     }
 
     if config.corner_stop_enabled {
@@ -211,6 +213,7 @@ mod tests {
     #[test]
     fn detects_custom_stop_zone_before_other_failsafes() {
         let mut config = sample_config();
+        config.stop_zones_enabled = true;
         config.stop_zones.push(StopZoneConfig {
             rect: VirtualScreenRect::new(100, 100, 200, 150),
             action: ZoneAction::Stop,
@@ -224,6 +227,7 @@ mod tests {
     #[test]
     fn detects_custom_stop_zone_with_negative_coordinates() {
         let mut config = sample_config();
+        config.stop_zones_enabled = true;
         config.stop_zones.push(StopZoneConfig {
             rect: VirtualScreenRect::new(-300, -200, 150, 100),
             action: ZoneAction::Stop,

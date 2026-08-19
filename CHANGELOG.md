@@ -1,6 +1,7 @@
 # v3.9.5 - 19.08.2026 (d.m.y)
 ## Fixed
 - Disabled default browser shortcuts (F6, Ctrl+F, etc.) to prevent the UI from crashing when the window is focused.(software dev is a joke, i know)
+- A custom stop zone now does not stop the clicker when custom zones are disabled. [#272](https://github.com/Blur009/Blur-AutoClicker/issues/272)
 
 # v3.9.4 - 18.08.2026 (d.m.y)
 ## Fixed
