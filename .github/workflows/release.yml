@@ -91,14 +91,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Derive version (strip leading v from tag)
+      - name: Derive version
         id: version
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           Write-Output "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
-      - name: Find NSIS installer asset
+      - name: Find NSIS installer URL
         id: asset
         shell: pwsh
         env:
@@ -117,10 +117,10 @@ jobs:
         run: |
           .\wingetcreate.exe update Blur009.BlurAutoClicker `
             --version "${{ steps.version.outputs.version }}" `
-            --urls "${{ steps.asset.outputs.url }}" `
+            --urls "${{ steps.asset.outputs.url }}|x64" `
             --out ./winget-manifests
 
-      - name: Extract release notes
+      - name: Extract release notes from CHANGELOG
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -133,7 +133,7 @@ jobs:
             Set-Content -Path release_notes.md -Value "See https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
           }
 
-      - name: Inject ReleaseNotes
+      - name: Inject ReleaseNotes into locale manifest
         shell: pwsh
         run: |
           $notes = Get-Content release_notes.md -Raw
@@ -145,11 +145,13 @@ jobs:
           $block = "ReleaseNotes: |`n" + ($body -join "`n") + "`n"
           Add-Content -Path $locale.FullName -Value $block
 
-      - name: Submit PR to winget-pkgs
+      - name: Submit to winget-pkgs
         shell: pwsh
         run: |
-          .\wingetcreate.exe submit --no-open `
-            ./winget-manifests
+          $manifestFile = Get-ChildItem ./winget-manifests -Recurse -Filter "*.yaml" | Select-Object -First 1
+          if (-not $manifestFile) { throw 'No manifest yaml found under ./winget-manifests' }
+          $manifestDir = $manifestFile.DirectoryName
+          .\wingetcreate.exe submit --no-open $manifestDir
 
       - name: Open issue on failure
         if: failure()
@@ -161,8 +163,3 @@ jobs:
             --body "The winget-pkgs PR submission failed on release **${{ github.ref_name }}**.
 
           Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for logs.
-
-          Common causes:
-          - \`WINGET_CREATE_GITHUB_TOKEN\` secret is missing or expired.
-          - The \`*_x64-setup.exe\` asset was not found on the release.
-          - winget-pkgs rejected the manifest (see the PR if one was opened)."
