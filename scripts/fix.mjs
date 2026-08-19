@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Custom `npm run fix` orchestrator.
- *
+ * Made by AI
  * Applies every safe auto-fix (formatting, lint --fix, audit fix), then re-runs
  * the full check suite to report what is still outstanding.
  */

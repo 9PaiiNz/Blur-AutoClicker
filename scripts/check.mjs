@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Custom `npm run check` orchestrator.
- *
+ * Made by AI
  * Runs every quality gate in order with live per-step progress, collects the
  * real output of each step, and ends with a clear verdict. On a fully clean run
  * it prints only a success card (no noisy summary); when something warns or
@@ -95,12 +95,53 @@ function card(text, color) {
   return color(`┌${bar}┐\n│ ${text} │\n└${bar}┘`);
 }
 
-const total = CHECKS.length;
-const doFix = process.argv.includes('--fix');
-const results = [];
-const t0 = Date.now();
+/**
+ * @returns {boolean} true if a running instance was detected (and we aborted)
+ */
+async function guardRunningInstance() {
 
-process.stdout.write(`${C.bold('Quality checks')} ${C.grey(`(${total})`)}\n`);
+  let running = false;
+  if (process.platform === 'win32') {
+    const r = spawnSync('tasklist', ['/NH'], { encoding: 'utf8', shell: true });
+    const out = r.stdout || '';
+    running = /BlurAutoClicker/i.test(out) || /crashpad_handler/i.test(out);
+  } else {
+    const r = spawnSync('pgrep', ['-f', 'BlurAutoClicker|crashpad_handler'], { encoding: 'utf8' });
+    running = r.status === 0 && !!r.stdout.trim();
+  }
+
+  if (!running) {
+    try {
+      const { openSync, closeSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const resource = resolve('src-tauri/resources/crashpad_handler.exe');
+      const fd = openSync(resource, 'r+');
+      closeSync(fd);
+    } catch {
+      running = true;
+    }
+  }
+
+  if (!running) return false;
+
+  process.stdout.write(
+    `\n${card(`✖  App instance detected`, C.red)}\n` +
+      `${C.dim('Close BlurAutoClicker (and any crashpad_handler.exe it spawned) before running ')}` +
+      `${C.bold('npm run check')}` +
+      `${C.dim('. A running instance locks build resources and makes every cargo step fail ')}` +
+      `with "os error 32: file in use by another process".${C.reset}\n`,
+  );
+  process.exit(1);
+}
+
+async function main() {
+  const total = CHECKS.length;
+  const doFix = process.argv.includes('--fix');
+  const results = [];
+  const t0 = Date.now();
+
+  process.stdout.write(`${C.bold('Quality checks')} ${C.grey(`(${total})`)}\n`);
+  await guardRunningInstance();
 for (let i = 0; i < total; i++) {
   const c = CHECKS[i];
   process.stdout.write(`${C.cyan(S.run)} [${i + 1}/${total}] ${C.bold(c.name)} … `);
@@ -138,34 +179,37 @@ if (doFix) {
   }
 }
 
-const fails = results.filter((r) => r.status === 'fail');
-const warns = results.filter((r) => r.status === 'warn');
-const totalMs = Date.now() - t0;
+  const fails = results.filter((r) => r.status === 'fail');
+  const warns = results.filter((r) => r.status === 'warn');
+  const totalMs = Date.now() - t0;
 
-if (fails.length === 0 && warns.length === 0) {
-  process.stdout.write(`\n${card(`✔  All ${total} quality checks passed  (${totalMs}ms)`, C.green)}\n`);
-  process.exit(0);
+  if (fails.length === 0 && warns.length === 0) {
+    process.stdout.write(`\n${card(`✔  All ${total} quality checks passed  (${totalMs}ms)`, C.green)}\n`);
+    process.exit(0);
+  }
+
+  process.stdout.write(`\n${C.bold('Summary')}\n`);
+  const nameW = Math.max(...results.map((r) => r.name.length));
+  for (const r of results) {
+    const mark =
+      r.status === 'pass' ? C.green(S.pass) : r.status === 'warn' ? C.yellow(S.warn) : C.red(S.fail);
+    process.stdout.write(`  ${mark} ${r.name.padEnd(nameW)} ${C.grey(`${r.ms}ms`)}\n`);
+  }
+
+  for (const r of [...warns, ...fails]) {
+    process.stdout.write(
+      `\n${r.status === 'fail' ? C.red : C.yellow}${C.bold(`${r.name} — ${r.status}`)}${C.reset}\n`,
+    );
+    const lines = r.out.replace(/\r\n/g, '\n').trim().split('\n');
+    process.stdout.write(`${C.dim}${lines.slice(-60).join('\n')}${C.reset}\n`);
+  }
+
+  const verdict =
+    fails.length > 0
+      ? `✖  ${fails.length} check(s) failed`
+      : `⚠  ${warns.length} check(s) passed with warnings`;
+  process.stdout.write(`\n${card(verdict, fails.length > 0 ? C.red : C.yellow)}\n`);
+  process.exit(fails.length > 0 ? 1 : 0);
 }
 
-process.stdout.write(`\n${C.bold('Summary')}\n`);
-const nameW = Math.max(...results.map((r) => r.name.length));
-for (const r of results) {
-  const mark =
-    r.status === 'pass' ? C.green(S.pass) : r.status === 'warn' ? C.yellow(S.warn) : C.red(S.fail);
-  process.stdout.write(`  ${mark} ${r.name.padEnd(nameW)} ${C.grey(`${r.ms}ms`)}\n`);
-}
-
-for (const r of [...warns, ...fails]) {
-  process.stdout.write(
-    `\n${r.status === 'fail' ? C.red : C.yellow}${C.bold(`${r.name} — ${r.status}`)}${C.reset}\n`,
-  );
-  const lines = r.out.replace(/\r\n/g, '\n').trim().split('\n');
-  process.stdout.write(`${C.dim}${lines.slice(-60).join('\n')}${C.reset}\n`);
-}
-
-const verdict =
-  fails.length > 0
-    ? `✖  ${fails.length} check(s) failed`
-    : `⚠  ${warns.length} check(s) passed with warnings`;
-process.stdout.write(`\n${card(verdict, fails.length > 0 ? C.red : C.yellow)}\n`);
-process.exit(fails.length > 0 ? 1 : 0);
+main();
