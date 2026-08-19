@@ -14,11 +14,14 @@ use crate::ClickerState;
 use crate::ClickerStatusPayload;
 use crate::STATUS_EVENT;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SystemParametersInfoW, SPI_GETKEYBOARDDELAY, SPI_GETKEYBOARDSPEED,
+};
 
 use super::cycle::ClickCyclePlan;
 use super::failsafe::detect_stop_zones;
 use super::failsafe::should_stop_for_failsafe;
-use super::keyboard::{is_alphabetic_vk, send_key_presses};
+use super::keyboard::{is_alphabetic_vk, send_key_down, send_key_presses, send_key_up};
 use super::mouse::{
     current_cursor_position, get_button_flags, get_cursor_pos, move_mouse, send_clicks,
     smooth_move, VirtualScreenRect,
@@ -526,6 +529,11 @@ fn plan_cycle_batch(
 
 struct ClickerContext {
     is_keyboard: bool,
+    keyboard_hold_mode: bool,
+    key_code: u16,
+    keyboard_uppercase: bool,
+    keyboard_repeat_delay_ms: u32,
+    keyboard_repeat_interval_ms: u32,
     down_flag: u32,
     up_flag: u32,
     batch_size: usize,
@@ -533,6 +541,46 @@ struct ClickerContext {
     use_smoothing: bool,
     single_plan: ClickCyclePlan,
     double_plan: ClickCyclePlan,
+}
+
+fn get_keyboard_repeat_settings() -> (u32, u32) {
+    // SPI_GETKEYBOARDDELAY: 0=250ms, 1=500ms, 2=750ms, 3=1000ms
+    let mut delay_setting: u32 = 0;
+    unsafe {
+        SystemParametersInfoW(
+            SPI_GETKEYBOARDDELAY,
+            0,
+            &mut delay_setting as *mut _ as *mut _,
+            0,
+        );
+    }
+    let repeat_delay_ms = match delay_setting {
+        0 => 250,
+        1 => 500,
+        2 => 750,
+        3 => 1000,
+        _ => 250,
+    };
+
+    // SPI_GETKEYBOARDSPEED: 0=2.5 reps/sec (400ms), 31=30 reps/sec (~33ms)
+    // Formula: repeat_interval_ms = 1000 / (2.5 + speed * (30-2.5)/31)
+    let mut speed_setting: u32 = 0;
+    unsafe {
+        SystemParametersInfoW(
+            SPI_GETKEYBOARDSPEED,
+            0,
+            &mut speed_setting as *mut _ as *mut _,
+            0,
+        );
+    }
+    let repeat_interval_ms = if speed_setting >= 31 {
+        33
+    } else {
+        let reps_per_sec = 2.5 + (speed_setting as f64) * (27.5 / 31.0);
+        (1000.0 / reps_per_sec).round() as u32
+    };
+
+    (repeat_delay_ms, repeat_interval_ms)
 }
 
 impl ClickerContext {
@@ -570,8 +618,21 @@ impl ClickerContext {
         let hold_ms =
             ((config.interval_secs * duty.max(0.0) / 100.0 * 1000.0) as u32).min(cycle_ms);
 
+        // Keyboard hold mode: 100% duty cycle = emulate Windows auto-repeat
+        let keyboard_hold_mode = is_keyboard && duty >= 100.0;
+        let (keyboard_repeat_delay_ms, keyboard_repeat_interval_ms) = if keyboard_hold_mode {
+            get_keyboard_repeat_settings()
+        } else {
+            (0, 0)
+        };
+
         Self {
             is_keyboard,
+            keyboard_hold_mode,
+            key_code: config.key_code,
+            keyboard_uppercase: config.keyboard_uppercase,
+            keyboard_repeat_delay_ms,
+            keyboard_repeat_interval_ms,
             down_flag,
             up_flag,
             batch_size,
@@ -842,6 +903,107 @@ pub fn start_clicker(config: ClickerConfig, control: RunControl) -> RunOutcome {
     let should_abort = || check_abort(&config, start_time).is_some();
     let clicker_state = control.app.state::<ClickerState>();
 
+    // Keyboard hold mode: emulate Windows auto-repeat
+    if ctx.keyboard_hold_mode {
+        // Send initial key down
+        send_key_down(ctx.key_code, ctx.keyboard_uppercase);
+        st.click_count += 1;
+        CLICK_COUNT.store(st.click_count, Ordering::Relaxed);
+
+        // Wait for initial repeat delay
+        let delay_dur = Duration::from_millis(ctx.keyboard_repeat_delay_ms as u64);
+        sleep_interruptible(delay_dur, &control, &should_abort);
+        if !control.is_active() || should_abort() {
+            send_key_up(ctx.key_code, ctx.keyboard_uppercase);
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let avg_cpu = cpu_usage(cpu_start, cycle_freq, elapsed);
+            return RunOutcome {
+                stop_reason: st.stop_reason,
+                click_count: st.click_count,
+                elapsed_secs: elapsed,
+                avg_cpu,
+            };
+        }
+
+        // Auto-repeat loop: send repeated KEYDOWN at repeat interval
+        let mut last_repeat = Instant::now();
+        while control.is_active() {
+            if config.limit > 0 && st.click_count >= config.limit as i64 {
+                st.stop_reason = format!("Click limit reached ({})", config.limit);
+                break;
+            }
+
+            let zone_hit = if config.stop_zones_enabled && !config.stop_zones.is_empty() {
+                current_cursor_position().and_then(|cursor| detect_stop_zones(cursor, &config))
+            } else {
+                None
+            };
+
+            if let Some((crate::engine::ZoneAction::Stop, _)) = zone_hit {
+                st.stop_reason = String::from("Custom stop zone failsafe");
+                break;
+            }
+
+            if let Some(reason) = should_stop_for_failsafe(&config) {
+                st.stop_reason = reason;
+                break;
+            }
+            if config.task_switcher_stop_enabled && process::is_task_switcher_active() {
+                st.stop_reason = String::from("Blocked by Alt+Tab");
+                break;
+            }
+            if config.process_list_enabled && process::check_process_list(&config).is_some() {
+                st.stop_reason = String::from("Blocked by process list");
+                break;
+            }
+            if config.time_limit > 0.0 && start_time.elapsed().as_secs_f64() >= config.time_limit {
+                st.stop_reason = format!("Time limit reached ({:.1}s)", config.time_limit);
+                break;
+            }
+
+            match zone_hit {
+                Some((crate::engine::ZoneAction::Pause, _)) => {
+                    clicker_state.paused_by_zone.store(true, Ordering::SeqCst);
+                }
+                _ => {
+                    clicker_state.paused_by_zone.store(false, Ordering::SeqCst);
+                }
+            }
+
+            if clicker_state.paused.load(Ordering::SeqCst)
+                || clicker_state.paused_by_zone.load(Ordering::SeqCst)
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                continue;
+            }
+
+            // Send repeated key down (auto-repeat)
+            if last_repeat.elapsed()
+                >= Duration::from_millis(ctx.keyboard_repeat_interval_ms as u64)
+            {
+                send_key_down(ctx.key_code, ctx.keyboard_uppercase);
+                st.click_count += 1;
+                CLICK_COUNT.store(st.click_count, Ordering::Relaxed);
+                last_repeat = Instant::now();
+            }
+
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        // Release key on exit
+        send_key_up(ctx.key_code, ctx.keyboard_uppercase);
+
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let avg_cpu = cpu_usage(cpu_start, cycle_freq, elapsed);
+        return RunOutcome {
+            stop_reason: st.stop_reason,
+            click_count: st.click_count,
+            elapsed_secs: elapsed,
+            avg_cpu,
+        };
+    }
+
+    // Normal mode (mouse or keyboard with <100% duty)
     while control.is_active() {
         if config.limit > 0 && st.click_count >= config.limit as i64 {
             st.stop_reason = format!("Click limit reached ({})", config.limit);
@@ -1099,5 +1261,53 @@ mod tests {
         let config = build_config(&settings).expect("digit key should parse");
         assert_eq!(config.key_code, b'1' as u16);
         assert!(!config.keyboard_uppercase);
+    }
+
+    #[test]
+    fn keyboard_hold_mode_detected_at_100_percent_duty() {
+        let mut config = sample_config();
+        config.input_type = crate::engine::InputType::Keyboard;
+        config.key_code = b'A' as u16;
+        config.duty = 100.0;
+        config.interval_secs = 0.1; // 10 CPS
+
+        let ctx = ClickerContext::new(&config);
+        assert!(ctx.keyboard_hold_mode);
+        assert!(ctx.keyboard_repeat_delay_ms > 0);
+        assert!(ctx.keyboard_repeat_interval_ms > 0);
+    }
+
+    #[test]
+    fn keyboard_hold_mode_not_activated_below_100_percent() {
+        let mut config = sample_config();
+        config.input_type = crate::engine::InputType::Keyboard;
+        config.key_code = b'A' as u16;
+        config.duty = 99.9;
+        config.interval_secs = 0.1;
+
+        let ctx = ClickerContext::new(&config);
+        assert!(!ctx.keyboard_hold_mode);
+    }
+
+    #[test]
+    fn mouse_mode_never_uses_hold_mode() {
+        let mut config = sample_config();
+        config.input_type = crate::engine::InputType::Mouse;
+        config.duty = 100.0;
+        config.interval_secs = 0.1;
+
+        let ctx = ClickerContext::new(&config);
+        assert!(!ctx.keyboard_hold_mode);
+    }
+
+    #[test]
+    fn keyboard_no_key_code_no_hold_mode() {
+        let mut config = sample_config();
+        config.input_type = crate::engine::InputType::Keyboard;
+        config.key_code = 0;
+        config.duty = 100.0;
+
+        let ctx = ClickerContext::new(&config);
+        assert!(!ctx.keyboard_hold_mode);
     }
 }
