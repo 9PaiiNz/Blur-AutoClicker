@@ -3,5 +3,5 @@ pre-commit:
   commands:
     quality-gate:
       glob: ["*", "**/*"]
-      run: npm run check
+      run: "NO_COLOR=1 npm run check"
       fail_text: "Quality gate failed — run `npm run check` locally and fix issues before committing."

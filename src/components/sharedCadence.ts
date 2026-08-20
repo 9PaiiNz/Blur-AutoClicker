@@ -1,5 +1,10 @@
 import type { ChangeEvent, FocusEvent, WheelEvent } from "react";
-import { normalizeDecimalRaw, normalizeIntegerRaw } from "../numberInput";
+import {
+  normalizeDecimalRaw,
+  normalizeDecimalLocale,
+  normalizeIntegerRaw,
+  parseDecimalLocale,
+} from "../numberInput";
 import {
   convertDurationToRate,
   convertRateToDuration,
@@ -131,6 +136,19 @@ export function handleDecimalBlur(
     event.target.value = normalized;
   }
   apply(clamp(parseDecimalRaw(normalized), min, max));
+}
+
+export function handleDecimalBlurLocale(
+  event: FocusEvent<HTMLInputElement>,
+  min: number,
+  max: number | undefined,
+  apply: (next: number) => void,
+) {
+  const normalized = normalizeDecimalLocale(event.target.value);
+  if (normalized !== event.target.value) {
+    event.target.value = normalized;
+  }
+  apply(clamp(parseDecimalLocale(normalized), min, max));
 }
 
 export function handleDurationBlur(

@@ -9,9 +9,5 @@ use ```npm run check``` to make sure your code passes all error checking, tests,
      - cargo fmt
      - npm audit
 
-use ```npm run fix``` to fix any errors that can be automatically fixed. (will run ```npm run check``` after running the fixes to make sure everything is fixed)
-> fixes run by ```npm run fix```:
-     - cargo fmt
-     - prettier --write
-     - eslint --fix
-     - npm audit fix
+use ```npm run check:fix``` to automatically fix any issues that can be fixed (formatting, eslint, cargo fmt, npm audit). It re-runs the checks afterwards to confirm.
+> by default, run ```npm run check:fix``` (not just ```npm run check```) before finishing changes, so auto-fixable issues are resolved automatically and the gate stays green.

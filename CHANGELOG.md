@@ -3,6 +3,8 @@
 - Disabled default browser shortcuts (F6, Ctrl+F, etc.) to prevent the UI from crashing when the window is focused.(software dev is a joke, i know)
 - A custom stop zone now does not stop the clicker when custom zones are disabled. [#272](https://github.com/Blur009/Blur-AutoClicker/issues/272)
 - Keyboard hold clicker now works like it should (it will click the key, then repeat it at the set windows interval.) [#191](https://github.com/Blur009/Blur-AutoClicker/issues/191)
+- (researched click speed changes for a few hours and found out that the current implementation is basically as good as it gets. aka >500cps is just not accurate and there is nothing i can do about it.)
+- fix decimal to consistantly use commas.
 
 # v3.9.4 - 18.08.2026 (d.m.y)
 ## Fixed
