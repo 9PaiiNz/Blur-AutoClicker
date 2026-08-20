@@ -1,4 +1,4 @@
-# v3.9.5 - 19.08.2026 (d.m.y)
+# v3.9.5 - 20.08.2026 (d.m.y)
 ## New
 - Added keybinds for all major toggles (clicker, randomization, duty cycle, speed variation, sequence clicking) in the settings panel. [#246](https://github.com/Blur009/Blur-AutoClicker/issues/246), [#205](https://github.com/Blur009/Blur-AutoClicker/issues/205), 
 - Added master switch for autoclicker in the keybinds section of the settings panel. This will prevent the clicker from starting unless it is toggled or held down. The title will say 'MASTER OFF' in red while the master switch is off. [#250](https://github.com/Blur009/Blur-AutoClicker/issues/250), [#137](https://github.com/Blur009/Blur-AutoClicker/issues/137)
