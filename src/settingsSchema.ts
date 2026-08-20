@@ -446,6 +446,50 @@ const SETTINGS_ONLY_FIELDS = {
     default: "Digit5",
     ui: { section: "keybinds", control: "key" },
   },
+  keybindMode: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindInputType: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindDoubleClick: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindDutyCycleMode: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindSpeedRandomization: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindLimits: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindCornerStop: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindEdgeStop: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindStopZones: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindToggleClickPoints: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  keybindStopWhenComplete: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
   perPageAppearance: {
     default: false,
     ui: { section: "appearance", control: "toggle" },
