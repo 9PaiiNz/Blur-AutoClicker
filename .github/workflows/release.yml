@@ -16,9 +16,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -27,7 +27,7 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: './src-tauri -> target'
 
@@ -46,7 +46,7 @@ jobs:
           }
 
       - name: Build
-        uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -89,16 +89,16 @@ jobs:
     env:
       WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Derive version (strip leading v from tag)
+      - name: Derive version
         id: version
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           Write-Output "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
-      - name: Find NSIS installer asset
+      - name: Find NSIS installer URL
         id: asset
         shell: pwsh
         env:
@@ -117,10 +117,10 @@ jobs:
         run: |
           .\wingetcreate.exe update Blur009.BlurAutoClicker `
             --version "${{ steps.version.outputs.version }}" `
-            --urls "${{ steps.asset.outputs.url }}" `
+            --urls "${{ steps.asset.outputs.url }}|x64" `
             --out ./winget-manifests
 
-      - name: Extract release notes
+      - name: Extract release notes from CHANGELOG
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -133,7 +133,7 @@ jobs:
             Set-Content -Path release_notes.md -Value "See https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
           }
 
-      - name: Inject ReleaseNotes
+      - name: Inject ReleaseNotes into locale manifest
         shell: pwsh
         run: |
           $notes = Get-Content release_notes.md -Raw
@@ -145,11 +145,13 @@ jobs:
           $block = "ReleaseNotes: |`n" + ($body -join "`n") + "`n"
           Add-Content -Path $locale.FullName -Value $block
 
-      - name: Submit PR to winget-pkgs
+      - name: Submit to winget-pkgs
         shell: pwsh
         run: |
-          .\wingetcreate.exe submit --no-open `
-            ./winget-manifests
+          $manifestFile = Get-ChildItem ./winget-manifests -Recurse -Filter "*.yaml" | Select-Object -First 1
+          if (-not $manifestFile) { throw 'No manifest yaml found under ./winget-manifests' }
+          $manifestDir = $manifestFile.DirectoryName
+          .\wingetcreate.exe submit --no-open $manifestDir
 
       - name: Open issue on failure
         if: failure()
@@ -161,8 +163,3 @@ jobs:
             --body "The winget-pkgs PR submission failed on release **${{ github.ref_name }}**.
 
           Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for logs.
-
-          Common causes:
-          - \`WINGET_CREATE_GITHUB_TOKEN\` secret is missing or expired.
-          - The \`*_x64-setup.exe\` asset was not found on the release.
-          - winget-pkgs rejected the manifest (see the PR if one was opened)."

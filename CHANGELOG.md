@@ -1,3 +1,14 @@
+# v3.9.5 - 20.08.2026 (d.m.y)
+## New
+- Added keybinds for all major toggles (clicker, randomization, duty cycle, speed variation, sequence clicking) in the settings panel. [#246](https://github.com/Blur009/Blur-AutoClicker/issues/246), [#205](https://github.com/Blur009/Blur-AutoClicker/issues/205), 
+- Added master switch for autoclicker in the keybinds section of the settings panel. This will prevent the clicker from starting unless it is toggled or held down. The title will say 'MASTER OFF' in red while the master switch is off. [#250](https://github.com/Blur009/Blur-AutoClicker/issues/250), [#137](https://github.com/Blur009/Blur-AutoClicker/issues/137)
+## Fixed
+- Disabled default browser shortcuts (F6, Ctrl+F, etc.) to prevent the UI from crashing when the window is focused.(software dev is a joke, i know)
+- A custom stop zone now does not stop the clicker when custom zones are disabled. [#272](https://github.com/Blur009/Blur-AutoClicker/issues/272)
+- Keyboard hold clicker now works like it should (it will click the key, then repeat it at the set windows interval.) [#191](https://github.com/Blur009/Blur-AutoClicker/issues/191)
+- (researched click speed changes for a few hours and found out that the current implementation is basically as good as it gets. aka >500cps is just not accurate and there is nothing i can do about it.)
+- fix decimal to consistantly use commas.
+
 # v3.9.4 - 18.08.2026 (d.m.y)
 ## Fixed
 - Fixed Taskbar Icon not changing color (again.. hopefully for real this time).

@@ -36,7 +36,7 @@ pub struct HotkeyBinding {
     pub alt: bool,
     pub shift: bool,
     pub super_key: bool,
-    pub main_vk: i32,
+    pub main_vk: Option<i32>,
     pub key_token: String,
 }
 
@@ -64,6 +64,41 @@ pub fn register_hotkey_inner(app: &AppHandle, hotkey: String) -> AppResult<Strin
         .unwrap_or_else(poisoned_inner) = Some(binding.clone());
 
     Ok(format_hotkey_binding(&binding))
+}
+
+pub fn register_master_inner(app: &AppHandle, hotkey: String, hold_mode: bool) -> AppResult<()> {
+    let state = app.state::<ClickerState>();
+    let binding = if hotkey.is_empty() {
+        None
+    } else {
+        Some(parse_hotkey_binding(&hotkey)?)
+    };
+    let prev_key = state
+        .master_key
+        .lock()
+        .unwrap_or_else(poisoned_inner)
+        .as_ref()
+        .map(format_hotkey_binding);
+    let new_key = binding.as_ref().map(format_hotkey_binding);
+    let key_changed = prev_key != new_key;
+
+    *state.master_key.lock().unwrap_or_else(poisoned_inner) = binding;
+    state.master_hold_mode.store(hold_mode, Ordering::SeqCst);
+
+    if new_key.is_none() {
+        // Clearing the key always allows clicking; avoid a one-poll stale "off".
+        state.master_allowed.store(true, Ordering::SeqCst);
+        state.last_master_allowed.store(true, Ordering::SeqCst);
+    } else if key_changed {
+        // A freshly (re)bound key defaults to enabled, but a mode-only change
+        // must not silently re-enable a master the user toggled off.
+        let enabled = true;
+        state.master_enabled.store(enabled, Ordering::SeqCst);
+        state.master_allowed.store(enabled, Ordering::SeqCst);
+        state.last_master_allowed.store(enabled, Ordering::SeqCst);
+    }
+    emit_status(app);
+    Ok(())
 }
 
 pub fn normalize_hotkey(value: &str) -> String {
@@ -104,8 +139,11 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
         }
     }
 
-    let (main_vk, key_token) = main_key
-        .ok_or_else(|| AppError::Hotkey(format!("Invalid hotkey '{hotkey}': missing main key")))?;
+    let main_vk = main_key.as_ref().map(|(vk, _)| *vk);
+    let key_token = main_key
+        .as_ref()
+        .map(|(_, tok)| tok.clone())
+        .unwrap_or_default();
 
     Ok(HotkeyBinding {
         ctrl,
@@ -179,7 +217,9 @@ pub fn format_hotkey_binding(binding: &HotkeyBinding) -> String {
         parts.push(String::from("super"));
     }
 
-    parts.push(binding.key_token.clone());
+    if !binding.key_token.is_empty() {
+        parts.push(binding.key_token.clone());
+    }
     parts.join("+")
 }
 
@@ -305,6 +345,7 @@ pub fn start_hotkey_listener(app: AppHandle) {
         let state = app.state::<ClickerState>();
         let mut was_pressed = false;
         let mut was_suppressed = false;
+        let mut master_was_pressed = false;
         let mut last_check = Instant::now();
         let mut msg: MSG = std::mem::zeroed();
 
@@ -344,6 +385,58 @@ pub fn start_hotkey_listener(app: AppHandle) {
                         }
                     })
                     .unwrap_or(false);
+
+                let master_binding = {
+                    state
+                        .master_key
+                        .lock()
+                        .unwrap_or_else(poisoned_inner)
+                        .clone()
+                };
+                let master_hold = state.master_hold_mode.load(Ordering::SeqCst);
+                let mut master_enabled = state.master_enabled.load(Ordering::SeqCst);
+
+                let master_binding_pressed = match master_binding {
+                    None => false,
+                    Some(ref b) => {
+                        if HOOKS_ACTIVE.load(Ordering::Relaxed) {
+                            is_hotkey_binding_pressed_physical(b, strict)
+                                || (!running && is_hotkey_binding_pressed(b, strict))
+                        } else {
+                            is_hotkey_binding_pressed(b, strict)
+                        }
+                    }
+                };
+
+                if !master_hold && master_binding_pressed && !master_was_pressed {
+                    master_enabled = !master_enabled;
+                    state.master_enabled.store(master_enabled, Ordering::SeqCst);
+                }
+                master_was_pressed = master_binding_pressed;
+
+                let master_allowed = match master_binding {
+                    None => true,
+                    Some(_) => {
+                        if master_hold {
+                            master_binding_pressed
+                        } else {
+                            master_enabled
+                        }
+                    }
+                };
+
+                if master_allowed != state.last_master_allowed.load(Ordering::SeqCst) {
+                    state.master_allowed.store(master_allowed, Ordering::SeqCst);
+                    state
+                        .last_master_allowed
+                        .store(master_allowed, Ordering::SeqCst);
+                    emit_status(&app);
+                }
+
+                if running && !master_allowed {
+                    let _ =
+                        stop_clicker_inner(&app, Some(String::from("Stopped by master switch")));
+                }
 
                 let suppress_until = state.suppress_hotkey_until_ms.load(Ordering::SeqCst);
                 let suppress_until_release =
@@ -400,7 +493,9 @@ pub fn start_hotkey_listener(app: AppHandle) {
                         was_suppressed = true;
                     } else {
                         was_suppressed = false;
-                        handle_hotkey_pressed(&app);
+                        if master_allowed {
+                            handle_hotkey_pressed(&app);
+                        }
                     }
                 } else if !currently_pressed && was_pressed {
                     if !was_suppressed {
@@ -436,7 +531,7 @@ fn is_mouse_hotkey_binding(binding: &HotkeyBinding) -> bool {
         VK_XBUTTON1 as i32,
         VK_XBUTTON2 as i32,
     ]
-    .contains(&binding.main_vk)
+    .contains(&binding.main_vk.unwrap_or(-1))
 }
 
 fn is_cursor_over_own_window() -> bool {
@@ -466,7 +561,10 @@ fn is_hotkey_binding_pressed_physical(binding: &HotkeyBinding, strict: bool) -> 
     if !modifiers_match(binding, ctrl_down, alt_down, shift_down, super_down, strict) {
         return false;
     }
-    is_physical_vk_down(binding.main_vk)
+    match binding.main_vk {
+        Some(vk) => is_physical_vk_down(vk),
+        None => true,
+    }
 }
 
 pub fn handle_hotkey_pressed(app: &AppHandle) {
@@ -521,7 +619,10 @@ pub fn is_hotkey_binding_pressed(binding: &HotkeyBinding, strict: bool) -> bool 
         return false;
     }
 
-    is_vk_down(binding.main_vk)
+    match binding.main_vk {
+        Some(vk) => is_vk_down(vk),
+        None => true,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -568,7 +669,7 @@ fn modifiers_match(
     }
 
     if strict {
-        let main_modifier_group = modifier_group_for_vk(binding.main_vk);
+        let main_modifier_group = binding.main_vk.and_then(modifier_group_for_vk);
         if ctrl_down && !binding.ctrl && main_modifier_group != Some(ModifierGroup::Ctrl) {
             return false;
         }
@@ -592,10 +693,18 @@ pub fn is_vk_down(vk: i32) -> bool {
 
 fn normalize_modifier_token(token: &str) -> Option<&'static str> {
     match token {
-        "alt" | "option" => Some("alt"),
-        "ctrl" | "control" => Some("ctrl"),
-        "shift" => Some("shift"),
-        "super" | "command" | "cmd" | "meta" | "win" => Some("super"),
+        "alt" | "option" | "leftalt" | "rightalt" | "altleft" | "altright" | "lalt" | "ralt" => {
+            Some("alt")
+        }
+        "ctrl" | "control" | "leftctrl" | "rightctrl" | "ctrlleft" | "ctrlright" | "lctrl"
+        | "rctrl" => Some("ctrl"),
+        "shift" | "leftshift" | "rightshift" | "shiftleft" | "shiftright" | "lshift" | "rshift" => {
+            Some("shift")
+        }
+        "super" | "command" | "cmd" | "meta" | "win" | "leftsuper" | "rightsuper" | "superleft"
+        | "superright" | "leftwin" | "rightwin" | "winleft" | "winright" | "lwin" | "rwin" => {
+            Some("super")
+        }
         _ => None,
     }
 }
@@ -782,23 +891,24 @@ mod tests {
 
     #[test]
     fn standalone_modifier_tokens_round_trip() {
-        for token in [
-            "leftctrl",
-            "rightctrl",
-            "leftshift",
-            "rightshift",
-            "leftalt",
-            "rightalt",
-            "leftsuper",
-            "rightsuper",
-        ] {
+        let cases: [(&str, bool, bool, bool, bool, &str); 8] = [
+            ("leftctrl", true, false, false, false, "ctrl"),
+            ("rightctrl", true, false, false, false, "ctrl"),
+            ("leftshift", false, false, true, false, "shift"),
+            ("rightshift", false, false, true, false, "shift"),
+            ("leftalt", false, true, false, false, "alt"),
+            ("rightalt", false, true, false, false, "alt"),
+            ("leftsuper", false, false, false, true, "super"),
+            ("rightsuper", false, false, false, true, "super"),
+        ];
+        for (token, ctrl, alt, shift, super_key, expected) in cases {
             let binding = parse_hotkey_binding(token).expect("modifier key should parse");
-            assert_eq!(binding.key_token, token);
-            assert!(!binding.ctrl);
-            assert!(!binding.alt);
-            assert!(!binding.shift);
-            assert!(!binding.super_key);
-            assert_eq!(format_hotkey_binding(&binding), token);
+            assert_eq!(binding.main_vk, None, "token {token}");
+            assert_eq!(binding.ctrl, ctrl, "token {token}");
+            assert_eq!(binding.alt, alt, "token {token}");
+            assert_eq!(binding.shift, shift, "token {token}");
+            assert_eq!(binding.super_key, super_key, "token {token}");
+            assert_eq!(format_hotkey_binding(&binding), expected, "token {token}");
         }
     }
 

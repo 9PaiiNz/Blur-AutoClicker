@@ -1,12 +1,11 @@
 use super::cycle::{execute_click_cycle, ClickCycleKind, ClickCyclePlan};
+use super::worker::{sleep_interruptible, RunControl};
+use super::AUTOCLICKER_EXTRA_INFO;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, MapVirtualKeyW, SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT,
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC_EX, VK_CAPITAL,
     VK_SHIFT,
 };
-
-use super::worker::{sleep_interruptible, RunControl};
-use super::AUTOCLICKER_EXTRA_INFO;
 
 #[inline]
 fn vk_to_scan(vk: u16) -> (u16, bool) {
@@ -68,14 +67,30 @@ fn push_key_press(inputs: &mut Vec<INPUT>, vk: u16, use_shift: bool) {
     }
 }
 
-fn send_key_down(vk: u16, use_shift: bool) {
+pub(crate) fn send_key_down(vk: u16, uppercase: bool) {
+    let use_shift = should_hold_shift_for_case(vk, uppercase);
     if use_shift {
         send_key_event(VK_SHIFT, 0);
     }
     send_key_event(vk, 0);
 }
 
-fn send_key_up(vk: u16, use_shift: bool) {
+pub(crate) fn send_key_up(vk: u16, uppercase: bool) {
+    let use_shift = should_hold_shift_for_case(vk, uppercase);
+    send_key_event(vk, KEYEVENTF_KEYUP);
+    if use_shift {
+        send_key_event(VK_SHIFT, KEYEVENTF_KEYUP);
+    }
+}
+
+fn send_key_down_inner(vk: u16, use_shift: bool) {
+    if use_shift {
+        send_key_event(VK_SHIFT, 0);
+    }
+    send_key_event(vk, 0);
+}
+
+fn send_key_up_inner(vk: u16, use_shift: bool) {
     send_key_event(vk, KEYEVENTF_KEYUP);
     if use_shift {
         send_key_event(VK_SHIFT, KEYEVENTF_KEYUP);
@@ -129,8 +144,8 @@ pub fn send_key_presses(
         }
         if !execute_click_cycle(
             plan,
-            &mut || send_key_down(vk, use_shift),
-            &mut || send_key_up(vk, use_shift),
+            &mut || send_key_down_inner(vk, use_shift),
+            &mut || send_key_up_inner(vk, use_shift),
             &mut sleep_for,
             &is_active,
         ) {

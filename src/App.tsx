@@ -118,6 +118,7 @@ const DEFAULT_STATUS: ClickerStatus = {
   warning: null,
   activeClickPointIndex: null,
   activeClickPointTick: 0,
+  masterAllowed: true,
 };
 
 const DEFAULT_APP_INFO: AppInfo = {
@@ -1392,6 +1393,189 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  type ToggleHotkeyAction =
+    | "mode"
+    | "inputType"
+    | "doubleClick"
+    | "dutyCycleMode"
+    | "speedRandomization"
+    | "limits"
+    | "cornerStop"
+    | "edgeStop"
+    | "stopZones"
+    | "clickPoints"
+    | "stopWhenComplete";
+
+  const toggleHotkeyMapRef = useRef<Record<string, ToggleHotkeyAction>>({});
+
+  useEffect(() => {
+    const map: Record<string, ToggleHotkeyAction> = {};
+    const add = (stored: string, action: ToggleHotkeyAction) => {
+      if (stored) map[stored] = action;
+    };
+    add(settings.keybindMode, "mode");
+    add(settings.keybindInputType, "inputType");
+    add(settings.keybindDoubleClick, "doubleClick");
+    add(settings.keybindDutyCycleMode, "dutyCycleMode");
+    add(settings.keybindSpeedRandomization, "speedRandomization");
+    add(settings.keybindLimits, "limits");
+    add(settings.keybindCornerStop, "cornerStop");
+    add(settings.keybindEdgeStop, "edgeStop");
+    add(settings.keybindStopZones, "stopZones");
+    add(settings.keybindToggleClickPoints, "clickPoints");
+    add(settings.keybindStopWhenComplete, "stopWhenComplete");
+    toggleHotkeyMapRef.current = map;
+  }, [
+    settings.keybindMode,
+    settings.keybindInputType,
+    settings.keybindDoubleClick,
+    settings.keybindDutyCycleMode,
+    settings.keybindSpeedRandomization,
+    settings.keybindLimits,
+    settings.keybindCornerStop,
+    settings.keybindEdgeStop,
+    settings.keybindStopZones,
+    settings.keybindToggleClickPoints,
+    settings.keybindStopWhenComplete,
+  ]);
+
+  const handleToggleHotkeyAction = useCallback(
+    (action: ToggleHotkeyAction) => {
+      const s = committedSettingsRef.current;
+      switch (action) {
+        case "mode":
+          updateSettings({
+            mode: s.mode === "Toggle" ? "Hold" : "Toggle",
+          });
+          break;
+        case "inputType":
+          updateSettings({
+            inputType: s.inputType === "mouse" ? "keyboard" : "mouse",
+          });
+          break;
+        case "doubleClick":
+          updateSettings({
+            doubleClickEnabled: !s.doubleClickEnabled,
+          });
+          break;
+        case "dutyCycleMode":
+          if (s.dutyCycleMode === "Hold") {
+            updateSettings({
+              dutyCycleMode: "Click",
+              clickSpeed: s.savedClickSpeed,
+              clickInterval: s.savedClickInterval,
+              dutyCycle: s.savedDutyCycle,
+            });
+          } else {
+            updateSettings({
+              dutyCycleMode: "Hold",
+              savedClickSpeed: s.clickSpeed,
+              savedClickInterval: s.clickInterval,
+              savedDutyCycle: s.dutyCycle,
+              clickSpeed: 1,
+              clickInterval: "d",
+              dutyCycle: 100,
+            });
+          }
+          break;
+        case "speedRandomization":
+          updateSettings({
+            speedRandomizationEnabled: !s.speedRandomizationEnabled,
+          });
+          break;
+        case "limits": {
+          const effectiveMode: "clicks" | "time" =
+            s.timeLimitEnabled !== s.clickLimitEnabled
+              ? s.timeLimitEnabled
+                ? "time"
+                : "clicks"
+              : "clicks";
+          const isClicksMode = effectiveMode === "clicks";
+          const activeEnabled = isClicksMode
+            ? s.clickLimitEnabled
+            : s.timeLimitEnabled;
+          const nextValue = !activeEnabled;
+          if (isClicksMode) {
+            updateSettings({
+              clickLimitEnabled: nextValue,
+              timeLimitEnabled: false,
+            });
+          } else {
+            updateSettings({
+              timeLimitEnabled: nextValue,
+              clickLimitEnabled: false,
+            });
+          }
+          break;
+        }
+        case "cornerStop":
+          updateSettings({
+            cornerStopEnabled: !s.cornerStopEnabled,
+          });
+          break;
+        case "edgeStop":
+          updateSettings({
+            edgeStopEnabled: !s.edgeStopEnabled,
+          });
+          break;
+        case "stopZones":
+          updateSettings({
+            stopZonesEnabled: !s.stopZonesEnabled,
+          });
+          break;
+        case "clickPoints":
+          updateSettings({
+            clickPointsEnabled: !s.clickPointsEnabled,
+          });
+          break;
+        case "stopWhenComplete":
+          updateSettings({
+            stopWhenComplete: !s.stopWhenComplete,
+          });
+          break;
+      }
+    },
+    [updateSettings],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLElement &&
+        (e.target.isContentEditable ||
+          e.target.tagName === "INPUT" ||
+          e.target.tagName === "TEXTAREA" ||
+          e.target.tagName === "SELECT")
+      ) {
+        return;
+      }
+
+      const modifierHit = captureModifierHotkey(e);
+      const captured = modifierHit ?? captureHotkey(e);
+      if (!captured) return;
+
+      const action = toggleHotkeyMapRef.current[captured];
+      if (!action) return;
+
+      e.preventDefault();
+      handleToggleHotkeyAction(action);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleToggleHotkeyAction]);
+
+  useEffect(() => {
+    invoke("register_master", {
+      hotkey: settings.keybindMaster,
+      holdMode: settings.masterKeybindMode === "hold",
+    }).catch((err) => {
+      error(
+        JSON.stringify({ source: "App.registerMaster", error: String(err) }),
+      );
+    });
+  }, [settings.keybindMaster, settings.masterKeybindMode]);
+
   const activePreset = settings.presets.find(
     (p) => p.id === settings.activePresetId,
   );
@@ -1423,6 +1607,7 @@ export default function App() {
         onRequestClose={handleWindowClose}
         stopReason={status.stopReason}
         statusBarHidden={!settings.statusBarEnabled}
+        masterOff={!status.masterAllowed}
       />
       {updateInfo && (
         <UpdateBanner

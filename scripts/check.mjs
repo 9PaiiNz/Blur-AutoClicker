@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /*
  * Custom `npm run check` orchestrator.
- *
- * Runs every quality gate in order with live per-step progress, collects the
- * real output of each step, and ends with a clear verdict. On a fully clean run
- * it prints only a success card (no noisy summary); when something warns or
- * fails it prints a result table plus the captured output tail of each problem.
+ * Made by AI
+ * Runs every quality gate in order with a compact per-step line, then prints a
+ * short summary. On a clean run it says so in one line; on warning/failure it
+ * lists exactly which command failed and shows the captured output tail.
  *
  * `check` is read-only and CI-safe. `check --fix` additionally auto-fixes the
- * failing formatting/lint checks (prettier, eslint, cargo fmt, npm audit) and
+ * formatting/lint checks (prettier, eslint, cargo fmt, npm audit) and
  * re-verifies them — it never auto-edits code that only fails type/test checks.
  */
 
@@ -19,6 +18,7 @@ const COLOR =
   !process.env.NO_COLOR &&
   process.env.TERM !== 'dumb';
 const esc = (code) => (s) => (COLOR ? `\x1b[${code}m${s}\x1b[0m` : `${s}`);
+// NOTE: every color entry is a *function* — always call it: C.red('text').
 const C = {
   bold: esc('1'),
   dim: esc('2'),
@@ -29,9 +29,7 @@ const C = {
   grey: esc('90'),
   reset: COLOR ? '\x1b[0m' : '',
 };
-const S = COLOR
-  ? { pass: '✔', warn: '⚠', fail: '✖', run: '▶', rerun: '↻' }
-  : { pass: 'ok', warn: '!!', fail: 'XX', run: '>', rerun: '>' };
+const TAG = { pass: 'PASS', warn: 'WARN', fail: 'FAIL' };
 
 /** @typedef {{ name: string, cmd: string[], warn?: RegExp[], fix?: string[] }} Check */
 
@@ -49,8 +47,16 @@ const CHECKS = [
     warn: [/\bwarning\b/i],
     fix: ['npm', 'run', 'lint', '--', '--fix'],
   },
-  { name: 'prettier', cmd: ['npm', 'run', 'format:check'], fix: ['npm', 'run', 'format:write'] },
-  { name: 'frontend:build', cmd: ['npm', 'run', 'frontend:build'], warn: [/warning/i] },
+  {
+    name: 'prettier',
+    cmd: ['npm', 'run', 'format:check'],
+    fix: ['npm', 'run', 'format:write'],
+  },
+  {
+    name: 'frontend:build',
+    cmd: ['npm', 'run', 'frontend:build'],
+    warn: [/warning/i],
+  },
   {
     name: 'cargo check',
     cmd: ['cargo', 'check', '--manifest-path', 'src-tauri/Cargo.toml', '--locked'],
@@ -71,7 +77,7 @@ const CHECKS = [
 
 /**
  * @param {Check} c
- * @returns {{ name: string, status: 'pass'|'warn'|'fail', out: string, ms: number, code: number|null }}
+ * @returns {{ name: string, cmd: string, status: 'pass'|'warn'|'fail', out: string, ms: number, code: number|null }}
  */
 function run(c) {
   const t0 = Date.now();
@@ -85,87 +91,129 @@ function run(c) {
   let status = 'pass';
   if (r.status !== 0) status = 'fail';
   else if (c.warn && c.warn.some((re) => re.test(out))) status = 'warn';
-  return { name: c.name, status, out, ms, code: r.status };
+  return { name: c.name, cmd: c.cmd.join(' '), status, out, ms, code: r.status };
 }
 
-/** Bordered single-line card. */
-function card(text, color) {
-  const w = [...text].length;
-  const bar = '─'.repeat(w + 2);
-  return color(`┌${bar}┐\n│ ${text} │\n└${bar}┘`);
+/**
+ * @returns {boolean} true if a running instance was detected (and we aborted)
+ */
+async function guardRunningInstance() {
+  let running = false;
+  if (process.platform === 'win32') {
+    const r = spawnSync('tasklist', ['/NH'], { encoding: 'utf8', shell: true });
+    const out = r.stdout || '';
+    running = /BlurAutoClicker/i.test(out) || /crashpad_handler/i.test(out);
+  } else {
+    const r = spawnSync('pgrep', ['-f', 'BlurAutoClicker|crashpad_handler'], {
+      encoding: 'utf8',
+    });
+    running = r.status === 0 && !!r.stdout.trim();
+  }
+
+  if (!running) {
+    try {
+      const { openSync, closeSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const resource = resolve('src-tauri/resources/crashpad_handler.exe');
+      const fd = openSync(resource, 'r+');
+      closeSync(fd);
+    } catch {
+      running = true;
+    }
+  }
+
+  if (!running) return false;
+
+  process.stdout.write(
+    `\n${C.red('CHECK ABORTED — BlurAutoClicker is currently running.')}\n` +
+      `${C.bold('Close BlurAutoClicker')} (and any ${C.bold('crashpad_handler.exe')} it spawned), then re-run ${C.bold('npm run check')}.\n` +
+      `${C.dim('A running instance locks src-tauri/resources/crashpad_handler.exe, so every cargo step fails with "os error 32: file in use by another process".')}\n`,
+  );
+  process.exit(1);
 }
 
-const total = CHECKS.length;
-const doFix = process.argv.includes('--fix');
-const results = [];
-const t0 = Date.now();
+async function main() {
+  const total = CHECKS.length;
+  const doFix = process.argv.includes('--fix');
+  const results = [];
+  const t0 = Date.now();
 
-process.stdout.write(`${C.bold('Quality checks')} ${C.grey(`(${total})`)}\n`);
-for (let i = 0; i < total; i++) {
-  const c = CHECKS[i];
-  process.stdout.write(`${C.cyan(S.run)} [${i + 1}/${total}] ${C.bold(c.name)} … `);
-  const res = run(c);
-  const tag =
-    res.status === 'pass'
-      ? `${C.green(S.pass)} passed`
-      : res.status === 'warn'
-        ? `${C.yellow(S.warn)} warnings`
-        : `${C.red(S.fail)} failed`;
-  process.stdout.write(`${tag} ${C.grey(`(${res.ms}ms)`)}\n`);
-  results.push(res);
-}
+  process.stdout.write(`Running ${total} quality checks…\n`);
+  await guardRunningInstance();
 
-if (doFix) {
   for (let i = 0; i < total; i++) {
     const c = CHECKS[i];
-    if (results[i].status !== 'fail' || !c.fix) continue;
-    process.stdout.write(`${C.dim(`${S.rerun} auto-fixing ${c.name}…`)}${C.reset}\n`);
-    const fr = spawnSync(c.fix[0], c.fix.slice(1), {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-      shell: true,
-    });
-    if (fr.status !== 0) process.stdout.write(`${C.dim(`  (fixer exited ${fr.status})`)}${C.reset}\n`);
+    const label = c.name.padEnd(16);
+    process.stdout.write(`  [${i + 1}/${total}] ${C.cyan(label)} … `);
     const res = run(c);
     const tag =
       res.status === 'pass'
-        ? `${C.green(S.pass)} fixed`
+        ? C.green(TAG.pass)
         : res.status === 'warn'
-          ? `${C.yellow(S.warn)} still warnings`
-          : `${C.red(S.fail)} still failing`;
-    process.stdout.write(`  ${tag} ${C.grey(`(${res.ms}ms)`)}\n`);
-    results[i] = res;
+          ? C.yellow(TAG.warn)
+          : C.red(TAG.fail);
+    process.stdout.write(`${tag} ${C.grey(`${res.ms}ms`)}\n`);
+    results.push(res);
   }
-}
 
-const fails = results.filter((r) => r.status === 'fail');
-const warns = results.filter((r) => r.status === 'warn');
-const totalMs = Date.now() - t0;
+  if (doFix) {
+    for (let i = 0; i < total; i++) {
+      const c = CHECKS[i];
+      if (results[i].status !== 'fail' || !c.fix) continue;
+      const label = c.name.padEnd(16);
+      process.stdout.write(
+        `  [${i + 1}/${total}] ${C.cyan(label)} ${C.dim('(auto-fix)')} … `,
+      );
+      const fr = spawnSync(c.fix[0], c.fix.slice(1), {
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        shell: true,
+      });
+      if (fr.status !== 0)
+        process.stdout.write(`${C.dim(`(fixer exited ${fr.status}) `)}`);
+      const res = run(c);
+      const tag =
+        res.status === 'pass'
+          ? C.green('fixed')
+          : res.status === 'warn'
+            ? C.yellow('still warnings')
+            : C.red('still failing');
+      process.stdout.write(`${tag} ${C.grey(`${res.ms}ms`)}\n`);
+      results[i] = res;
+    }
+  }
 
-if (fails.length === 0 && warns.length === 0) {
-  process.stdout.write(`\n${card(`✔  All ${total} quality checks passed  (${totalMs}ms)`, C.green)}\n`);
-  process.exit(0);
-}
+  const fails = results.filter((r) => r.status === 'fail');
+  const warns = results.filter((r) => r.status === 'warn');
+  const totalMs = ((Date.now() - t0) / 1000).toFixed(1);
 
-process.stdout.write(`\n${C.bold('Summary')}\n`);
-const nameW = Math.max(...results.map((r) => r.name.length));
-for (const r of results) {
-  const mark =
-    r.status === 'pass' ? C.green(S.pass) : r.status === 'warn' ? C.yellow(S.warn) : C.red(S.fail);
-  process.stdout.write(`  ${mark} ${r.name.padEnd(nameW)} ${C.grey(`${r.ms}ms`)}\n`);
-}
+  if (fails.length === 0 && warns.length === 0) {
+    process.stdout.write(
+      `\n${C.green(`All ${total} quality checks passed`)} (${totalMs}s)\n`,
+    );
+    process.exit(0);
+  }
 
-for (const r of [...warns, ...fails]) {
   process.stdout.write(
-    `\n${r.status === 'fail' ? C.red : C.yellow}${C.bold(`${r.name} — ${r.status}`)}${C.reset}\n`,
+    `\n${C.bold('Result')}: ${fails.length} failed, ${warns.length} with warnings\n`,
   );
-  const lines = r.out.replace(/\r\n/g, '\n').trim().split('\n');
-  process.stdout.write(`${C.dim}${lines.slice(-60).join('\n')}${C.reset}\n`);
+  for (const r of [...fails, ...warns]) {
+    const mark = r.status === 'fail' ? C.red(TAG.fail) : C.yellow(TAG.warn);
+    process.stdout.write(`  ${mark} ${C.bold(r.name)}  ${C.dim(`[${r.cmd}]`)}\n`);
+  }
+
+  for (const r of fails) {
+    process.stdout.write(`\n${C.bold(r.name)} output (last lines):\n`);
+    const lines = r.out.replace(/\r\n/g, '\n').trim().split('\n');
+    process.stdout.write(`${C.dim(lines.slice(-40).join('\n'))}\n`);
+  }
+
+  const verdict =
+    fails.length > 0
+      ? `${fails.length} check(s) failed`
+      : `${warns.length} check(s) passed with warnings`;
+  process.stdout.write(`\n${C.bold(verdict)} (${totalMs}s)\n`);
+  process.exit(fails.length > 0 ? 1 : 0);
 }
 
-const verdict =
-  fails.length > 0
-    ? `✖  ${fails.length} check(s) failed`
-    : `⚠  ${warns.length} check(s) passed with warnings`;
-process.stdout.write(`\n${card(verdict, fails.length > 0 ? C.red : C.yellow)}\n`);
-process.exit(fails.length > 0 ? 1 : 0);
+main();

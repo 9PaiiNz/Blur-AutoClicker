@@ -977,6 +977,18 @@
   cursor: pointer;
 }
 
+.settings-keybind-group-title {
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-keybind-group-hint {
+  margin-bottom: 0.5rem;
+}
+
 /* Opacity controls */
 .settings-opacity-controls {
   display: flex;

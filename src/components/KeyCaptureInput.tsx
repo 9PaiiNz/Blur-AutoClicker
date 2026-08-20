@@ -56,6 +56,8 @@ export default function KeyCaptureInput({
     useState<Awaited<ReturnType<typeof getKeyboardLayoutMap>>>(null);
   const onChangeRef = useRef(onChange);
   const onMouseButtonCaptureRef = useRef(onMouseButtonCapture);
+  const comboRef = useRef<string | null>(null);
+  const capturedModifiersRef = useRef<string[]>([]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -108,11 +110,14 @@ export default function KeyCaptureInput({
 
   useEffect(() => {
     if (!listening) return;
+    comboRef.current = null;
+    capturedModifiersRef.current = [];
 
     const finishCapture = (nextValue?: string) => {
       if (nextValue !== undefined) {
         onChangeRef.current(nextValue);
       }
+      comboRef.current = null;
       setListening(false);
       inputRef.current?.blur();
     };
@@ -122,12 +127,6 @@ export default function KeyCaptureInput({
 
       event.preventDefault();
       event.stopPropagation();
-
-      const modifierHit = captureModifierHotkey(event);
-      if (modifierHit) {
-        finishCapture(modifierHit);
-        return;
-      }
 
       if (event.key === "Escape" || event.code === "Escape") {
         finishCapture("escape");
@@ -144,19 +143,40 @@ export default function KeyCaptureInput({
         return;
       }
 
-      const captured = captureHotkey({
-        key: event.key,
-        code: event.code,
-        location: event.location,
-        ctrlKey: false,
-        altKey: false,
-        shiftKey: false,
-        metaKey: false,
-      });
+      const modifierHit = captureModifierHotkey(event);
+      if (modifierHit) {
+        comboRef.current = comboRef.current
+          ? `${comboRef.current}+${modifierHit}`
+          : modifierHit;
+        if (!capturedModifiersRef.current.includes(modifierHit)) {
+          capturedModifiersRef.current.push(modifierHit);
+        }
+        return;
+      }
+
+      const captured = captureHotkey(event);
 
       if (captured) {
-        const mainKey = captured.split("+").pop() ?? captured;
-        finishCapture(mainKey);
+        finishCapture(captured);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const modifierHit = captureModifierHotkey(event);
+      if (!modifierHit) return;
+
+      if (comboRef.current) {
+        const parts = comboRef.current
+          .split("+")
+          .filter((part) => part !== modifierHit);
+        comboRef.current = parts.length ? parts.join("+") : null;
+        if (!comboRef.current) {
+          // All keys released with no main key captured: commit the full
+          // modifier chord (e.g. "leftctrl+leftshift") instead of just the
+          // last-released modifier.
+          const full = capturedModifiersRef.current.join("+");
+          finishCapture(full || undefined);
+        }
       }
     };
 
@@ -169,10 +189,12 @@ export default function KeyCaptureInput({
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("contextmenu", handleContextMenu, true);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("contextmenu", handleContextMenu, true);
     };
   }, [listening]);

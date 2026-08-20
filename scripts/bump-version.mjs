@@ -3,7 +3,7 @@
 // THIS IS A SCRIPT FOR EASILY BUMPING VERSION NUMBERS.
 // THIS SCRIPT MAY ONLY BE USED BY THE PERSON RESPONSIBLE FOR RELEASING UPDATES (BLUR009).
 // PLEASE DO NOT BUMP VERSION NUMBERS AS A CONTRIBUTER.
-//
+// Made by AI
 // command:
 // node scripts/bump-version.mjs 0.0.0
 //─────────────────────────────────────────────

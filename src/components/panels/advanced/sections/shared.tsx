@@ -15,7 +15,9 @@ import { createPortal } from "react-dom";
 
 import {
   normalizeIntegerRaw,
-  normalizeDecimalRaw,
+  normalizeDecimalLocale,
+  parseDecimalLocale,
+  formatDecimalLocale,
 } from "../../../../numberInput";
 import UnavailableReason from "../../../UnavailableReason";
 
@@ -129,7 +131,8 @@ export function NumInput({
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const wheelRef = useRef(false);
-  const normalize = allowDecimal ? normalizeDecimalRaw : normalizeIntegerRaw;
+  const [draft, setDraft] = useState<string | null>(null);
+  const normalize = allowDecimal ? normalizeDecimalLocale : normalizeIntegerRaw;
   const clampValue = (next: number) => {
     let clamped = next;
     if (min !== undefined && clamped < min) clamped = min;
@@ -137,29 +140,56 @@ export function NumInput({
     return clamped;
   };
 
+  const displayValue = allowDecimal
+    ? (draft ?? formatDecimalLocale(value))
+    : (draft ?? String(Math.trunc(value)));
+
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (wheelRef.current) {
-      if (ref.current) ref.current.value = String(value);
+      if (ref.current) ref.current.value = displayValue;
       return;
     }
-    const raw = normalize(e.target.value);
-    if (raw !== e.target.value) {
-      e.target.value = raw;
-    }
-    if (raw === "" || raw === "-" || raw === "." || raw === "-.") {
+    const raw = e.target.value;
+    const normalized = normalize(raw);
+    if (normalized !== raw) e.target.value = normalized;
+    if (allowDecimal) {
+      if (
+        normalized === "" ||
+        normalized === "-" ||
+        normalized === "." ||
+        normalized === "," ||
+        normalized === "-." ||
+        normalized === "-," ||
+        normalized.endsWith(".") ||
+        normalized.endsWith(",")
+      ) {
+        setDraft(normalized);
+        return;
+      }
+      setDraft(null);
+      const val = parseDecimalLocale(normalized);
+      onChange(Number.isNaN(val) ? (min ?? 0) : val);
       return;
     }
-    const val = Number(raw);
+    if (normalized === "" || normalized === "-") {
+      setDraft(normalized);
+      return;
+    }
+    setDraft(null);
+    const val = Number(normalized);
     onChange(Number.isNaN(val) ? (min ?? 0) : val);
   };
 
   const handleBlur = (e: FocusEvent<HTMLInputElement>) => {
+    setDraft(null);
     const raw = normalize(e.target.value);
     if (raw !== e.target.value) {
       e.target.value = raw;
     }
-    let val = Number(raw || e.target.value);
-    if (Number.isNaN(val)) val = min ?? 0;
+    const parsed = allowDecimal
+      ? parseDecimalLocale(raw || e.target.value)
+      : Number(raw || e.target.value);
+    const val = Number.isNaN(parsed) ? (min ?? 0) : parsed;
     onChange(clampValue(val));
   };
 
@@ -179,6 +209,7 @@ export function NumInput({
       if (min !== undefined && next < min) next = min;
       if (max !== undefined && next > max) next = max;
       wheelRef.current = true;
+      setDraft(null);
       onChange(next);
       setTimeout(() => {
         wheelRef.current = false;
@@ -194,9 +225,10 @@ export function NumInput({
   return (
     <input
       ref={ref}
-      type="number"
+      type="text"
+      inputMode={allowDecimal ? "decimal" : "numeric"}
       className="adv-number-sm"
-      value={value}
+      value={displayValue}
       min={min}
       max={max}
       onChange={handleChange}

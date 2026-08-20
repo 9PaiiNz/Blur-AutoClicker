@@ -28,6 +28,7 @@ interface Props {
   onRequestClose: () => Promise<void>;
   stopReason: string | null;
   statusBarHidden: boolean;
+  masterOff: boolean;
 }
 
 type NavTab = Exclude<Tab, "settings">;
@@ -228,6 +229,7 @@ const TitleBar = memo(function TitleBar({
   onRequestClose,
   stopReason,
   statusBarHidden,
+  masterOff,
 }: Props) {
   const setTabRef = useRef(setTab);
   useEffect(() => {
@@ -254,6 +256,7 @@ const TitleBar = memo(function TitleBar({
       data-tauri-drag-region
       data-running={running}
       data-tab={tab}
+      data-master-off={masterOff}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
         <button
@@ -317,6 +320,14 @@ const TitleBar = memo(function TitleBar({
           } as CSSProperties
         }
       >
+        {masterOff && (
+          <span
+            className="master-off-badge"
+            title="Master switch off — clicker blocked"
+          >
+            MASTER OFF
+          </span>
+        )}
         <WindowBtn
           onClick={() => {
             void onToggleAlwaysOnTop();

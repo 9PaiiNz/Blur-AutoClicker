@@ -83,6 +83,7 @@ export interface ClickerStatus {
   warning: string | null;
   activeClickPointIndex: number | null;
   activeClickPointTick: number;
+  masterAllowed: boolean;
 }
 
 export interface AppInfo {

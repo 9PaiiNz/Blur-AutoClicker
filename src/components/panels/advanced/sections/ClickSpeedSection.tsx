@@ -1,6 +1,10 @@
 import { useState, type WheelEvent, type FocusEvent } from "react";
 import type { Settings } from "../../../../store";
-import { normalizeDecimalRaw } from "../../../../numberInput";
+import {
+  formatDecimalLocale,
+  normalizeDecimalLocale,
+  parseDecimalLocale,
+} from "../../../../numberInput";
 import {
   convertDurationToRate,
   formatIntervalMs,
@@ -21,7 +25,7 @@ import {
   INTERVAL_OPTIONS,
   handleDurationBlur,
   handleDurationWheelStep,
-  handleDecimalBlur,
+  handleDecimalBlurLocale,
   handleNumberChange,
   handleWheelStep,
 } from "../../../sharedCadence";
@@ -47,7 +51,7 @@ export default function ClickSpeedSection({ settings, update }: Props) {
     const unitLabel =
       INTERVAL_OPTIONS.find((o) => o.value === converted.clickInterval)
         ?.label || "Second";
-    return `${converted.clickSpeed} clicks per ${unitLabel.toLowerCase()}`;
+    return `${formatDecimalLocale(converted.clickSpeed)} clicks per ${unitLabel.toLowerCase()}`;
   })();
 
   return (
@@ -104,30 +108,38 @@ export default function ClickSpeedSection({ settings, update }: Props) {
                       type="text"
                       inputMode="decimal"
                       className="adv-number-sm"
-                      value={draftCps ?? settings.clickSpeed}
+                      value={
+                        draftCps ?? formatDecimalLocale(settings.clickSpeed)
+                      }
                       style={{ width: "5ch", textAlign: "right" }}
                       onChange={(event) => {
                         const raw = event.target.value;
-                        const normalized = normalizeDecimalRaw(raw);
+                        const normalized = normalizeDecimalLocale(raw);
                         if (normalized !== raw) event.target.value = normalized;
                         if (
                           normalized === "" ||
                           normalized === "-" ||
                           normalized === "." ||
+                          normalized === "," ||
                           normalized === "-." ||
-                          normalized.endsWith(".")
+                          normalized === "-," ||
+                          normalized.endsWith(".") ||
+                          normalized.endsWith(",")
                         ) {
                           setDraftCps(normalized);
                           return;
                         }
                         setDraftCps(null);
-                        const val = Number(normalized);
+                        const val = parseDecimalLocale(normalized);
                         update({ clickSpeed: Number.isNaN(val) ? 1 : val });
                       }}
                       onBlur={(event) => {
                         setDraftCps(null);
-                        handleDecimalBlur(event, 1, maxClickSpeed, (next) =>
-                          update({ clickSpeed: next }),
+                        handleDecimalBlurLocale(
+                          event,
+                          1,
+                          maxClickSpeed,
+                          (next) => update({ clickSpeed: next }),
                         );
                       }}
                       onWheel={(event) =>
