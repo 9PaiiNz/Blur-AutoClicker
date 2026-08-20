@@ -20,6 +20,7 @@ use crate::engine::worker::now_epoch_ms;
 use crate::engine::worker::start_clicker_inner;
 use crate::engine::worker::stop_clicker_inner;
 use crate::hotkeys::register_hotkey_inner;
+use crate::hotkeys::register_master_inner;
 
 #[tauri::command]
 pub fn get_text_scale_factor() -> f64 {
@@ -124,6 +125,11 @@ pub fn reset_settings(app: AppHandle) -> AppResult<ClickerSettings> {
     }
     register_hotkey_inner(&app, defaults.hotkey.clone())?;
     Ok(defaults)
+}
+
+#[tauri::command]
+pub fn register_master(app: AppHandle, hotkey: String, hold_mode: bool) -> AppResult<()> {
+    register_master_inner(&app, hotkey, hold_mode)
 }
 
 #[tauri::command]

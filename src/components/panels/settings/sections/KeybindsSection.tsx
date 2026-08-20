@@ -95,6 +95,50 @@ export default function KeybindsSection({ settings, update }: Props) {
   return (
     <>
       <SettingsCard
+        title="Master Switch"
+        description="Bind a key that globally enables or disables the autoclicker. When off, the main activation keybind will not start it. Empty by default (always allowed)."
+      >
+        <div className="settings-row">
+          <div className="settings-label-group">
+            <span className="settings-label">Master Key</span>
+            <span className="settings-sublabel">
+              Toggle disables/enables on press. Hold keeps it enabled while
+              held.
+            </span>
+          </div>
+          <KeyCaptureInput
+            className="settings-keybind-capture"
+            value={settings.keybindMaster}
+            onChange={(key) => update({ keybindMaster: key })}
+          />
+        </div>
+        <div className="settings-row">
+          <div className="settings-label-group">
+            <span className="settings-label">Master Key Mode</span>
+            <span className="settings-sublabel">
+              Toggle: press to flip. Hold: autoclicker runs only while held.
+            </span>
+          </div>
+          <div className="settings-seg-group">
+            <button
+              type="button"
+              className={`settings-seg-btn ${settings.masterKeybindMode === "toggle" ? "active" : ""}`}
+              onClick={() => update({ masterKeybindMode: "toggle" })}
+            >
+              Toggle
+            </button>
+            <button
+              type="button"
+              className={`settings-seg-btn ${settings.masterKeybindMode === "hold" ? "active" : ""}`}
+              onClick={() => update({ masterKeybindMode: "hold" })}
+            >
+              Hold
+            </button>
+          </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
         title="Keybinds"
         description="Set a keyboard shortcut for each page. Press the key you want to bind."
       >

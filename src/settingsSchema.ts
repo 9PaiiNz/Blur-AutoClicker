@@ -490,6 +490,14 @@ const SETTINGS_ONLY_FIELDS = {
     default: "",
     ui: { section: "keybinds", control: "key" },
   },
+  keybindMaster: {
+    default: "",
+    ui: { section: "keybinds", control: "key" },
+  },
+  masterKeybindMode: {
+    default: "toggle" as "toggle" | "hold",
+    ui: { section: "keybinds", control: "select" },
+  },
   perPageAppearance: {
     default: false,
     ui: { section: "appearance", control: "toggle" },
@@ -1360,6 +1368,11 @@ export function sanitizeSettings(
     defaults.lastPanel,
   );
   settingsOnly.theme = sanitizeTheme(saved.theme, defaults.theme);
+  settingsOnly.masterKeybindMode = sanitizeEnum(
+    saved.masterKeybindMode,
+    defaults.masterKeybindMode,
+    ["toggle", "hold"],
+  );
   settingsOnly.alwaysOnTop = sanitizeBoolean(
     saved.alwaysOnTop,
     defaults.alwaysOnTop,

@@ -118,6 +118,7 @@ const DEFAULT_STATUS: ClickerStatus = {
   warning: null,
   activeClickPointIndex: null,
   activeClickPointTick: 0,
+  masterAllowed: true,
 };
 
 const DEFAULT_APP_INFO: AppInfo = {
@@ -1564,6 +1565,17 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleToggleHotkeyAction]);
 
+  useEffect(() => {
+    invoke("register_master", {
+      hotkey: settings.keybindMaster,
+      holdMode: settings.masterKeybindMode === "hold",
+    }).catch((err) => {
+      error(
+        JSON.stringify({ source: "App.registerMaster", error: String(err) }),
+      );
+    });
+  }, [settings.keybindMaster, settings.masterKeybindMode]);
+
   const activePreset = settings.presets.find(
     (p) => p.id === settings.activePresetId,
   );
@@ -1595,6 +1607,7 @@ export default function App() {
         onRequestClose={handleWindowClose}
         stopReason={status.stopReason}
         statusBarHidden={!settings.statusBarEnabled}
+        masterOff={!status.masterAllowed}
       />
       {updateInfo && (
         <UpdateBanner

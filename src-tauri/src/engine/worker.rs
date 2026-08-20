@@ -150,7 +150,7 @@ pub fn start_clicker_inner(app: &AppHandle) -> AppResult<ClickerStatusPayload> {
             .unwrap_or_else(poisoned_inner)
             .clone();
         if let Some(binding) = hotkey_binding {
-            if binding.main_vk == config.key_code as i32 {
+            if binding.main_vk == Some(config.key_code as i32) {
                 let conflicts_with_plain_key =
                     !binding.ctrl && !binding.alt && !binding.shift && !binding.super_key;
                 let conflicts_with_uppercase_key = config.keyboard_uppercase
@@ -459,6 +459,7 @@ pub fn current_status(app: &AppHandle) -> ClickerStatusPayload {
             None
         },
         active_click_point_tick,
+        master_allowed: state.master_allowed.load(Ordering::SeqCst),
     }
 }
 

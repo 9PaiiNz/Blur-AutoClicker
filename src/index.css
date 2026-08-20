@@ -31,6 +31,8 @@
   --accent-yellow: rgba(254, 188, 47, 0.75);
   --accent-red: rgba(255, 117, 107, 0.75);
 
+  --danger: rgba(255, 117, 107, 0.95);
+
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
@@ -77,6 +79,8 @@
   --accent-glow-2: rgba(18, 135, 35, 0.08);
   --accent-yellow: rgba(178, 122, 1, 0.9);
   --accent-red: rgba(230, 15, 0, 0.9);
+
+  --danger: rgba(230, 15, 0, 0.95);
 
   --container-shadow: none;
 

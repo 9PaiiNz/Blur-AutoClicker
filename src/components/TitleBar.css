@@ -25,6 +25,26 @@
   box-shadow: inset 0 -1px 0 0 var(--accent-glow-1);
 }
 
+.window-title-background[data-master-off="true"] {
+  border-bottom-color: var(--danger);
+}
+
+.master-off-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  user-select: none;
+}
+
 .title-wrapper {
   position: absolute;
   left: 50%;
@@ -50,6 +70,8 @@
     0 0 10px var(--accent-glow-1),
     0 0 18px var(--accent-glow-2);
 }
+
+/* master-off: title stays neutral; state shown via the pill + red border */
 
 /* -- Title Horizontal Reveal -- */
 

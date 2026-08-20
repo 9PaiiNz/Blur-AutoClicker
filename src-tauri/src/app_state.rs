@@ -27,6 +27,11 @@ pub struct ClickerState {
     pub click_point_pick_active: AtomicBool,
     pub custom_stop_zone_pick_active: AtomicBool,
     pub registered_hotkey: Mutex<Option<HotkeyBinding>>,
+    pub master_key: Mutex<Option<HotkeyBinding>>,
+    pub master_hold_mode: AtomicBool,
+    pub master_enabled: AtomicBool,
+    pub master_allowed: AtomicBool,
+    pub last_master_allowed: AtomicBool,
     pub settings_initialized: AtomicBool,
     pub paused: Arc<AtomicBool>,
     pub paused_by_zone: AtomicBool,
@@ -47,6 +52,7 @@ pub struct ClickerStatusPayload {
     pub warning: Option<String>,
     pub active_click_point_index: Option<usize>,
     pub active_click_point_tick: u64,
+    pub master_allowed: bool,
 }
 
 #[derive(Clone, serde::Serialize)]
