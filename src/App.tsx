@@ -1231,21 +1231,37 @@ export default function App() {
       settings.backgroundImage,
       `backgroundImage${sfx}`,
     );
-    const escape = (s: string) => s.replace(/"/g, '\\"');
+    const escape = (s: string) =>
+      s
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/'/g, "\\'")
+        .replace(/\)/g, "\\)")
+        .replace(/\n/g, "")
+        .replace(/\r/g, "");
 
     if (!img) {
       root.style.setProperty("--bg-image", "none");
     } else if (
       img.startsWith("http://") ||
       img.startsWith("https://") ||
-      img.startsWith("data:")
+      img.startsWith("data:image/") ||
+      img.startsWith("asset://")
     ) {
       root.style.setProperty("--bg-image", `url("${escape(img)}")`);
+    } else if (img.startsWith("data:")) {
+      root.style.setProperty("--bg-image", "none");
     } else {
-      root.style.setProperty(
-        "--bg-image",
-        `url("${escape(convertFileSrc(img))}")`,
-      );
+      const converted = convertFileSrc(img);
+      if (
+        converted.startsWith("http://") ||
+        converted.startsWith("https://") ||
+        converted.startsWith("asset://")
+      ) {
+        root.style.setProperty("--bg-image", `url("${escape(converted)}")`);
+      } else {
+        root.style.setProperty("--bg-image", "none");
+      }
     }
   }, [
     settings,

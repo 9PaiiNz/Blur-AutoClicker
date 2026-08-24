@@ -47,7 +47,19 @@ $bootstrapper = Join-Path $stageDir 'MicrosoftEdgeWebview2Setup.exe'
 if (-not (Test-Path $bootstrapper)) {
   try {
     Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
-    Write-Host '[package-portable] Downloaded WebView2 bootstrapper'
+    # Verify bootstrapper is Authenticode signed by Microsoft before bundling
+    try {
+      $sig = Get-AuthenticodeSignature -FilePath $bootstrapper
+      if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "Microsoft Corporation") {
+        Write-Warning "Bootstrapper signature invalid, removing"
+        Remove-Item -Force $bootstrapper -ErrorAction SilentlyContinue
+      } else {
+        Write-Host '[package-portable] Downloaded WebView2 bootstrapper'
+      }
+    } catch {
+      Write-Warning "Failed to verify bootstrapper signature: $_"
+      Remove-Item -Force $bootstrapper -ErrorAction SilentlyContinue
+    }
   } catch {
     Write-Warning '[package-portable] Could not download WebView2 bootstrapper; users without WebView2 must install it manually.'
   }

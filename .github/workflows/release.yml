@@ -34,6 +34,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit Rust dependencies
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          cargo install cargo-audit --locked 2>/dev/null || true
+          cargo audit
+
       - name: Extract changelog
         shell: pwsh
         run: |
@@ -111,6 +118,32 @@ jobs:
 
       - name: Download wingetcreate
         run: curl.exe -JLO https://aka.ms/wingetcreate/latest
+
+      - name: Verify wingetcreate
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash .\wingetcreate.exe -Algorithm SHA256).Hash
+          Write-Host "wingetcreate hash: $hash"
+          if (-not $hash) { throw "wingetcreate hash empty — download failed" }
+          # Authenticode pin: wingetcreate must be Microsoft-signed
+          try {
+            $sig = Get-AuthenticodeSignature -FilePath .\wingetcreate.exe
+            if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "Microsoft Corporation") {
+              throw "wingetcreate signature invalid: $($sig.Status) / $($sig.SignerCertificate.Subject)"
+            }
+            Write-Host "wingetcreate signature valid: $($sig.SignerCertificate.Subject)"
+          } catch {
+            throw "Failed to verify wingetcreate signature: $_"
+          }
+          # Optional hash pin if .github/wingetcreate.sha256 is committed
+          if (Test-Path .github/wingetcreate.sha256) {
+            $expected = (Get-Content .github/wingetcreate.sha256 -Raw).Trim().ToLower()
+            # strip comments / whitespace, take first 64 hex
+            $expected = ($expected -split '\s' | Where-Object { $_ -match '^[a-f0-9]{64}$' } | Select-Object -First 1)
+            if ($expected -and $hash.ToLower() -ne $expected) {
+              throw "wingetcreate hash mismatch: expected $expected, got $hash — update .github/wingetcreate.sha256 if legitimate upstream update"
+            }
+          }
 
       - name: Generate manifest locally
         shell: pwsh
