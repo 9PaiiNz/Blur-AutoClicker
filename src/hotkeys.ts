@@ -418,6 +418,53 @@ function buildHotkeyString(
   return parts.join("+");
 }
 
+const HELD_ORDER = [
+  "ctrl",
+  "leftctrl",
+  "rightctrl",
+  "alt",
+  "leftalt",
+  "rightalt",
+  "shift",
+  "leftshift",
+  "rightshift",
+  "super",
+  "leftsuper",
+  "rightsuper",
+];
+
+export function sortHeld(held: string[]): string[] {
+  return [...held].sort(
+    (a, b) => HELD_ORDER.indexOf(a) - HELD_ORDER.indexOf(b),
+  );
+}
+
+function normalizeMainKeyForStorage(raw: string): string {
+  if (/^Key[A-Z]$/.test(raw)) return raw.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(raw)) return raw.slice(5);
+  return raw.toLowerCase();
+}
+
+export function getMainKey(
+  event: Pick<KeyboardCaptureEvent, "key" | "code" | "location">,
+): string | null {
+  const lowerKey = event.key.toLowerCase();
+  if (MODIFIER_KEYS.has(lowerKey)) return null;
+  if (event.code && MODIFIER_CODES.has(event.code)) return null;
+  if (lowerKey === "escape" || event.code === "Escape") return null;
+  const raw =
+    (event.code
+      ? mainKeyFromCode(event.code, event.key, event.location)
+      : null) ?? mainKeyFromKey(event.key);
+  if (!raw) return null;
+  return normalizeMainKeyForStorage(raw);
+}
+
+export function buildHotkeyWithHeld(mainKey: string, held: string[]): string {
+  if (held.length === 0) return normalizeMainKeyForStorage(mainKey);
+  return `${sortHeld(held).join("+")}+${normalizeMainKeyForStorage(mainKey)}`;
+}
+
 function displayTokenFromStoredValue(
   token: string,
   layoutMap: LayoutMapLike | null,
@@ -629,7 +676,9 @@ export function formatHotkeyForDisplay(
   return value
     .split("+")
     .map((part) => {
-      const modifier = normalizeModifierToken(part);
+      const lower = part.trim().toLowerCase();
+      const aliasCanonical = normalizeNamedKey(lower) ?? lower;
+      const modifier = normalizeModifierToken(aliasCanonical);
       if (modifier) {
         if (modifier === "ctrl") return labels?.modifiers.ctrl ?? "Ctrl";
         if (modifier === "alt") return labels?.modifiers.alt ?? "Alt";
@@ -637,7 +686,11 @@ export function formatHotkeyForDisplay(
         return labels?.modifiers.super ?? "Super";
       }
 
-      const display = displayTokenFromStoredValue(part, layoutMap, labels);
+      const display = displayTokenFromStoredValue(
+        aliasCanonical,
+        layoutMap,
+        labels,
+      );
       return display.length === 1 ? display.toUpperCase() : display;
     })
     .join(" + ");
@@ -651,11 +704,59 @@ function canonicalizeHotkeyString(
   let alt = false;
   let shift = false;
   let superKey = false;
+  let leftCtrl = false;
+  let rightCtrl = false;
+  let leftAlt = false;
+  let rightAlt = false;
+  let leftShift = false;
+  let rightShift = false;
+  let leftSuper = false;
+  let rightSuper = false;
   let mainKey: string | null = null;
 
   for (const rawPart of value.split("+")) {
-    const part = rawPart.trim();
+    const part = rawPart.trim().toLowerCase();
     if (!part) continue;
+
+    // side-specific first
+    if (["leftctrl", "ctrlleft", "lctrl"].includes(part)) {
+      leftCtrl = true;
+      continue;
+    }
+    if (["rightctrl", "ctrlright", "rctrl"].includes(part)) {
+      rightCtrl = true;
+      continue;
+    }
+    if (["leftalt", "altleft", "lalt"].includes(part)) {
+      leftAlt = true;
+      continue;
+    }
+    if (["rightalt", "altright", "ralt", "altgr"].includes(part)) {
+      rightAlt = true;
+      continue;
+    }
+    if (["leftshift", "shiftleft", "lshift"].includes(part)) {
+      leftShift = true;
+      continue;
+    }
+    if (["rightshift", "shiftright", "rshift"].includes(part)) {
+      rightShift = true;
+      continue;
+    }
+    if (
+      ["leftsuper", "superleft", "leftwin", "winleft", "lwin"].includes(part)
+    ) {
+      leftSuper = true;
+      continue;
+    }
+    if (
+      ["rightsuper", "superright", "rightwin", "winright", "rwin"].includes(
+        part,
+      )
+    ) {
+      rightSuper = true;
+      continue;
+    }
 
     const modifier = normalizeModifierToken(part);
     if (modifier) {
@@ -671,9 +772,17 @@ function canonicalizeHotkeyString(
 
   const parts: string[] = [];
   if (ctrl) parts.push("ctrl");
+  if (leftCtrl) parts.push("leftctrl");
+  if (rightCtrl) parts.push("rightctrl");
   if (alt) parts.push("alt");
+  if (leftAlt) parts.push("leftalt");
+  if (rightAlt) parts.push("rightalt");
   if (shift) parts.push("shift");
+  if (leftShift) parts.push("leftshift");
+  if (rightShift) parts.push("rightshift");
   if (superKey) parts.push("super");
+  if (leftSuper) parts.push("leftsuper");
+  if (rightSuper) parts.push("rightsuper");
   if (mainKey) parts.push(mainKey);
   return parts.join("+");
 }

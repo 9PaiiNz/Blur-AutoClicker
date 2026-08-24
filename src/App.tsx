@@ -18,9 +18,11 @@ import {
 import { applyAccentTheme } from "./accentTheme";
 import UpdateBanner from "./components/Updatebanner";
 import {
+  buildHotkeyWithHeld,
   canonicalizeHotkeyForBackend,
   captureHotkey,
   captureModifierHotkey,
+  getMainKey,
 } from "./hotkeys";
 
 import {
@@ -1360,18 +1362,28 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    const held: string[] = [];
     const normalizeKey = (e: KeyboardEvent): string | null => {
       const modifierHit = captureModifierHotkey(e);
       if (modifierHit) return modifierHit;
       if (e.key === "Escape" || e.code === "Escape") return "escape";
       if (e.key === "Backspace") return "backspace";
       if (e.key === "Delete") return "delete";
+      const mainKey = getMainKey(e);
+      if (mainKey) {
+        if (held.length > 0) return buildHotkeyWithHeld(mainKey, held);
+        const captured = captureHotkey(e);
+        if (!captured) return null;
+        return captured.split("+").pop() ?? captured;
+      }
       const captured = captureHotkey(e);
       if (!captured) return null;
       return captured.split("+").pop() ?? captured;
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const modifierHit = captureModifierHotkey(e);
+      if (modifierHit && !held.includes(modifierHit)) held.push(modifierHit);
       if (
         e.target instanceof HTMLElement &&
         (e.target.isContentEditable ||
@@ -1388,9 +1400,25 @@ export default function App() {
       e.preventDefault();
       handleTabChangeRef.current(tab);
     };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const modifierHit = captureModifierHotkey(e);
+      if (modifierHit) {
+        const idx = held.indexOf(modifierHit);
+        if (idx !== -1) held.splice(idx, 1);
+      }
+    };
+    const handleBlur = () => {
+      held.length = 0;
+    };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
   }, []);
 
   type ToggleHotkeyAction =
@@ -1539,7 +1567,10 @@ export default function App() {
   );
 
   useEffect(() => {
+    const held: string[] = [];
     const handleKeyDown = (e: KeyboardEvent) => {
+      const modifierHit = captureModifierHotkey(e);
+      if (modifierHit && !held.includes(modifierHit)) held.push(modifierHit);
       if (
         e.target instanceof HTMLElement &&
         (e.target.isContentEditable ||
@@ -1550,8 +1581,11 @@ export default function App() {
         return;
       }
 
-      const modifierHit = captureModifierHotkey(e);
-      const captured = modifierHit ?? captureHotkey(e);
+      const mainKey = getMainKey(e);
+      const captured =
+        mainKey && held.length > 0
+          ? buildHotkeyWithHeld(mainKey, held)
+          : (modifierHit ?? captureHotkey(e));
       if (!captured) return;
 
       const action = toggleHotkeyMapRef.current[captured];
@@ -1560,9 +1594,25 @@ export default function App() {
       e.preventDefault();
       handleToggleHotkeyAction(action);
     };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const modifierHit = captureModifierHotkey(e);
+      if (modifierHit) {
+        const idx = held.indexOf(modifierHit);
+        if (idx !== -1) held.splice(idx, 1);
+      }
+    };
+    const handleBlur = () => {
+      held.length = 0;
+    };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
   }, [handleToggleHotkeyAction]);
 
   useEffect(() => {

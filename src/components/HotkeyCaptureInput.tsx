@@ -9,13 +9,16 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { error } from "@tauri-apps/plugin-log";
 import {
+  buildHotkeyWithHeld,
   captureHotkey,
   captureModifierHotkey,
   captureMouseHotkey,
   defaultHotkeyLabels,
   formatHotkeyForDisplay,
   getKeyboardLayoutMap,
+  getMainKey,
   getStateClass,
+  sortHeld,
 } from "../hotkeys";
 
 interface Props {
@@ -142,7 +145,8 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         inputRef.current?.blur();
       };
 
-      let pendingModifierHotkey: string | null = null;
+      const heldModifiers: string[] = [];
+      const capturedModifiers: string[] = [];
 
       const handleKeyDown = (event: KeyboardEvent) => {
         event.preventDefault();
@@ -150,29 +154,49 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
 
         const modifierHotkey = captureModifierHotkey(event);
         if (modifierHotkey) {
-          pendingModifierHotkey = modifierHotkey;
+          if (!heldModifiers.includes(modifierHotkey))
+            heldModifiers.push(modifierHotkey);
+          if (!capturedModifiers.includes(modifierHotkey))
+            capturedModifiers.push(modifierHotkey);
           return;
         }
 
         if (event.key === "Escape" || event.code === "Escape") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
           finishCapture("escape");
           return;
         }
 
         if (event.key === "Backspace") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
           finishCapture("backspace");
           return;
         }
 
         if (event.key === "Delete") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
           finishCapture("delete");
           return;
         }
 
-        pendingModifierHotkey = null;
+        const mainKey = getMainKey(event);
+        if (mainKey) {
+          const nextHotkey =
+            heldModifiers.length > 0
+              ? buildHotkeyWithHeld(mainKey, heldModifiers)
+              : captureHotkey(event);
+          if (!nextHotkey) return;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
+          finishCapture(nextHotkey);
+          return;
+        }
+
+        heldModifiers.length = 0;
+        capturedModifiers.length = 0;
 
         const nextHotkey = captureHotkey(event);
         if (!nextHotkey) return;
@@ -185,10 +209,15 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         event.stopPropagation();
 
         const modifierHotkey = captureModifierHotkey(event);
-        if (!modifierHotkey || modifierHotkey !== pendingModifierHotkey) return;
-
-        pendingModifierHotkey = null;
-        finishCapture(modifierHotkey);
+        if (modifierHotkey) {
+          const idx = heldModifiers.indexOf(modifierHotkey);
+          if (idx !== -1) heldModifiers.splice(idx, 1);
+          if (heldModifiers.length === 0 && capturedModifiers.length > 0) {
+            const full = sortHeld(capturedModifiers).join("+");
+            capturedModifiers.length = 0;
+            finishCapture(full);
+          }
+        }
       };
 
       const handleMouseDown = (event: MouseEvent) => {
@@ -231,16 +260,23 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         event.stopPropagation();
       };
 
+      const handleBlur = () => {
+        heldModifiers.length = 0;
+        capturedModifiers.length = 0;
+      };
+
       window.addEventListener("keydown", handleKeyDown, true);
       window.addEventListener("keyup", handleKeyUp, true);
       window.addEventListener("mousedown", handleMouseDown, true);
       window.addEventListener("contextmenu", handleContextMenu, true);
+      window.addEventListener("blur", handleBlur);
 
       return () => {
         window.removeEventListener("keydown", handleKeyDown, true);
         window.removeEventListener("keyup", handleKeyUp, true);
         window.removeEventListener("mousedown", handleMouseDown, true);
         window.removeEventListener("contextmenu", handleContextMenu, true);
+        window.removeEventListener("blur", handleBlur);
       };
     }, [listening]);
 

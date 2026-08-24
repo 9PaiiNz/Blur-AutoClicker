@@ -1,3 +1,9 @@
+# v3.9.6 - 24.08.2026 (d.m.y)
+## Changed
+- Updated UI to show left and right variants of modifier keys instead of just the generic name.
+## Fixed
+- Fixed modifier keys not correctly accepting left and right variants. 
+
 # v3.9.5 - 20.08.2026 (d.m.y)
 ## New
 - Added keybinds for all major toggles (clicker, randomization, duty cycle, speed variation, sequence clicking) in the settings panel. [#246](https://github.com/Blur009/Blur-AutoClicker/issues/246), [#205](https://github.com/Blur009/Blur-AutoClicker/issues/205), 
