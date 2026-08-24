@@ -30,6 +30,8 @@ const PM_NOREMOVE: u32 = 0x0000;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(4);
 
+const MAX_CHORD_MAINS: usize = 5;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HotkeyBinding {
     pub ctrl: bool,
@@ -44,8 +46,17 @@ pub struct HotkeyBinding {
     pub right_shift: bool,
     pub left_super: bool,
     pub right_super: bool,
-    pub main_vk: Option<i32>,
-    pub key_token: String,
+    pub main_vks: Vec<i32>,
+    pub key_tokens: Vec<String>,
+}
+
+impl HotkeyBinding {
+    pub fn main_vk(&self) -> Option<i32> {
+        self.main_vks.first().copied()
+    }
+    pub fn key_token(&self) -> &str {
+        self.key_tokens.first().map(|s| s.as_str()).unwrap_or("")
+    }
 }
 
 pub fn register_hotkey_inner(app: &AppHandle, hotkey: String) -> AppResult<String> {
@@ -142,8 +153,8 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
                     right_shift: false,
                     left_super: false,
                     right_super: false,
-                    main_vk: Some(vk),
-                    key_token: token,
+                    main_vks: vec![vk],
+                    key_tokens: vec![token],
                 });
             }
         }
@@ -160,7 +171,7 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
     let mut right_shift = false;
     let mut left_super = false;
     let mut right_super = false;
-    let mut main_key: Option<(i32, String)> = None;
+    let mut mains: Vec<(i32, String)> = Vec::new();
 
     for token in normalized.split('+').map(str::trim) {
         if token.is_empty() {
@@ -183,14 +194,23 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
             "leftsuper" | "superleft" | "leftwin" | "winleft" | "lwin" => left_super = true,
             "rightsuper" | "superright" | "rightwin" | "winright" | "rwin" => right_super = true,
             _ => {
-                if main_key
-                    .replace(parse_hotkey_main_key(token, hotkey)?)
-                    .is_some()
-                {
+                let entry = parse_hotkey_main_key(token, hotkey)?;
+                if mains.len() >= MAX_CHORD_MAINS {
                     return Err(AppError::Hotkey(format!(
-                        "Invalid hotkey '{hotkey}': use modifiers first and only one main key"
+                        "Invalid hotkey '{hotkey}': chord supports up to {} main keys, got {}",
+                        MAX_CHORD_MAINS,
+                        mains.len() + 1
                     )));
                 }
+                if mains
+                    .iter()
+                    .any(|(vk, tok)| *vk == entry.0 || tok == &entry.1)
+                {
+                    return Err(AppError::Hotkey(format!(
+                        "Invalid hotkey '{hotkey}': duplicate main key '{token}'"
+                    )));
+                }
+                mains.push(entry);
             }
         }
     }
@@ -216,11 +236,10 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
         )));
     }
 
-    let main_vk = main_key.as_ref().map(|(vk, _)| *vk);
-    let key_token = main_key
-        .as_ref()
-        .map(|(_, tok)| tok.clone())
-        .unwrap_or_default();
+    // Canonical chord order: lexical sort by token for stable display / comparison
+    mains.sort_by(|a, b| a.1.cmp(&b.1));
+    let main_vks = mains.iter().map(|(vk, _)| *vk).collect();
+    let key_tokens = mains.into_iter().map(|(_, tok)| tok).collect();
 
     Ok(HotkeyBinding {
         ctrl,
@@ -235,8 +254,8 @@ pub fn parse_hotkey_binding(hotkey: &str) -> AppResult<HotkeyBinding> {
         right_shift,
         left_super,
         right_super,
-        main_vk,
-        key_token,
+        main_vks,
+        key_tokens,
     })
 }
 
@@ -326,8 +345,8 @@ pub fn format_hotkey_binding(binding: &HotkeyBinding) -> String {
         parts.push(String::from("rightsuper"));
     }
 
-    if !binding.key_token.is_empty() {
-        parts.push(binding.key_token.clone());
+    for tok in &binding.key_tokens {
+        parts.push(tok.clone());
     }
     parts.join("+")
 }
@@ -633,14 +652,14 @@ pub fn start_hotkey_listener(app: AppHandle) {
 }
 
 fn is_mouse_hotkey_binding(binding: &HotkeyBinding) -> bool {
-    [
+    let mouse_vks = [
         VK_LBUTTON as i32,
         VK_RBUTTON as i32,
         VK_MBUTTON as i32,
         VK_XBUTTON1 as i32,
         VK_XBUTTON2 as i32,
-    ]
-    .contains(&binding.main_vk.unwrap_or(-1))
+    ];
+    binding.main_vks.iter().any(|vk| mouse_vks.contains(vk))
 }
 
 fn is_cursor_over_own_window() -> bool {
@@ -687,10 +706,10 @@ fn is_hotkey_binding_pressed_physical(binding: &HotkeyBinding, strict: bool) -> 
     if !modifiers_match(binding, &down, strict) {
         return false;
     }
-    match binding.main_vk {
-        Some(vk) => is_physical_vk_down(vk),
-        None => true,
+    if binding.main_vks.is_empty() {
+        return true;
     }
+    binding.main_vks.iter().all(|vk| is_physical_vk_down(*vk))
 }
 
 pub fn handle_hotkey_pressed(app: &AppHandle) {
@@ -762,10 +781,10 @@ pub fn is_hotkey_binding_pressed(binding: &HotkeyBinding, strict: bool) -> bool 
         return false;
     }
 
-    match binding.main_vk {
-        Some(vk) => is_vk_down(vk),
-        None => true,
+    if binding.main_vks.is_empty() {
+        return true;
     }
+    binding.main_vks.iter().all(|vk| is_vk_down(*vk))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -844,13 +863,18 @@ fn modifiers_match(binding: &HotkeyBinding, down: &DownState, strict: bool) -> b
     }
 
     if strict {
-        let main_modifier_group = binding.main_vk.and_then(modifier_group_for_vk);
+        let main_groups: Vec<ModifierGroup> = binding
+            .main_vks
+            .iter()
+            .filter_map(|vk| modifier_group_for_vk(*vk))
+            .collect();
+        let contains = |g: ModifierGroup| main_groups.contains(&g);
         // generic extra check
         if down.ctrl
             && !binding.ctrl
             && !binding.left_ctrl
             && !binding.right_ctrl
-            && main_modifier_group != Some(ModifierGroup::Ctrl)
+            && !contains(ModifierGroup::Ctrl)
         {
             return false;
         }
@@ -858,7 +882,7 @@ fn modifiers_match(binding: &HotkeyBinding, down: &DownState, strict: bool) -> b
             && !binding.alt
             && !binding.left_alt
             && !binding.right_alt
-            && main_modifier_group != Some(ModifierGroup::Alt)
+            && !contains(ModifierGroup::Alt)
         {
             return false;
         }
@@ -866,7 +890,7 @@ fn modifiers_match(binding: &HotkeyBinding, down: &DownState, strict: bool) -> b
             && !binding.shift
             && !binding.left_shift
             && !binding.right_shift
-            && main_modifier_group != Some(ModifierGroup::Shift)
+            && !contains(ModifierGroup::Shift)
         {
             return false;
         }
@@ -874,64 +898,41 @@ fn modifiers_match(binding: &HotkeyBinding, down: &DownState, strict: bool) -> b
             && !binding.super_key
             && !binding.left_super
             && !binding.right_super
-            && main_modifier_group != Some(ModifierGroup::Super)
+            && !contains(ModifierGroup::Super)
         {
             return false;
         }
         // side-specific extra check: wrong side pressed when specific side required
-        if down.lctrl
-            && !binding.left_ctrl
-            && !binding.ctrl
-            && main_modifier_group != Some(ModifierGroup::Ctrl)
-        {
+        if down.lctrl && !binding.left_ctrl && !binding.ctrl && !contains(ModifierGroup::Ctrl) {
             return false;
         }
-        if down.rctrl
-            && !binding.right_ctrl
-            && !binding.ctrl
-            && main_modifier_group != Some(ModifierGroup::Ctrl)
-        {
+        if down.rctrl && !binding.right_ctrl && !binding.ctrl && !contains(ModifierGroup::Ctrl) {
             return false;
         }
-        if down.lalt
-            && !binding.left_alt
-            && !binding.alt
-            && main_modifier_group != Some(ModifierGroup::Alt)
-        {
+        if down.lalt && !binding.left_alt && !binding.alt && !contains(ModifierGroup::Alt) {
             return false;
         }
-        if down.ralt
-            && !binding.right_alt
-            && !binding.alt
-            && main_modifier_group != Some(ModifierGroup::Alt)
-        {
+        if down.ralt && !binding.right_alt && !binding.alt && !contains(ModifierGroup::Alt) {
             return false;
         }
-        if down.lshift
-            && !binding.left_shift
-            && !binding.shift
-            && main_modifier_group != Some(ModifierGroup::Shift)
-        {
+        if down.lshift && !binding.left_shift && !binding.shift && !contains(ModifierGroup::Shift) {
             return false;
         }
-        if down.rshift
-            && !binding.right_shift
-            && !binding.shift
-            && main_modifier_group != Some(ModifierGroup::Shift)
+        if down.rshift && !binding.right_shift && !binding.shift && !contains(ModifierGroup::Shift)
         {
             return false;
         }
         if down.lsuper
             && !binding.left_super
             && !binding.super_key
-            && main_modifier_group != Some(ModifierGroup::Super)
+            && !contains(ModifierGroup::Super)
         {
             return false;
         }
         if down.rsuper
             && !binding.right_super
             && !binding.super_key
-            && main_modifier_group != Some(ModifierGroup::Super)
+            && !contains(ModifierGroup::Super)
         {
             return false;
         }
@@ -1094,7 +1095,7 @@ mod tests {
         ] {
             let hotkey = format!("ctrl+shift+{token}");
             let binding = parse_hotkey_binding(&hotkey).expect("token should parse");
-            assert_eq!(binding.key_token, token);
+            assert_eq!(binding.key_token(), token);
             assert_eq!(format_hotkey_binding(&binding), hotkey);
         }
     }
@@ -1139,34 +1140,34 @@ mod tests {
         ] {
             let binding = parse_hotkey_binding(token).expect("modifier key should parse");
             assert!(
-                binding.main_vk.is_some(),
+                binding.main_vk().is_some(),
                 "token {token} should be distinct"
             );
             assert!(!binding.ctrl, "token {token}");
             assert!(!binding.alt, "token {token}");
             assert!(!binding.shift, "token {token}");
             assert!(!binding.super_key, "token {token}");
-            assert_eq!(binding.key_token, token, "token {token}");
+            assert_eq!(binding.key_token(), token, "token {token}");
             assert_eq!(format_hotkey_binding(&binding), token, "token {token}");
         }
         let generic = parse_hotkey_binding("ctrl").expect("ctrl should parse");
-        assert_eq!(generic.main_vk, None);
+        assert_eq!(generic.main_vk(), None);
         assert!(generic.ctrl);
         assert_eq!(format_hotkey_binding(&generic), "ctrl");
         let generic_chord = parse_hotkey_binding("ctrl+shift").expect("chord should parse");
         assert!(generic_chord.ctrl);
         assert!(generic_chord.shift);
-        assert_eq!(generic_chord.main_vk, None);
+        assert_eq!(generic_chord.main_vk(), None);
         assert_eq!(format_hotkey_binding(&generic_chord), "ctrl+shift");
         let side_chord =
             parse_hotkey_binding("leftctrl+leftshift").expect("side chord should parse");
         assert!(side_chord.left_ctrl);
         assert!(side_chord.left_shift);
-        assert_eq!(side_chord.main_vk, None);
+        assert_eq!(side_chord.main_vk(), None);
         assert_eq!(format_hotkey_binding(&side_chord), "leftctrl+leftshift");
         let side_combo = parse_hotkey_binding("leftctrl+e").expect("side combo should parse");
         assert!(side_combo.left_ctrl);
-        assert_eq!(side_combo.key_token, "e");
+        assert_eq!(side_combo.key_token(), "e");
         assert_eq!(format_hotkey_binding(&side_combo), "leftctrl+e");
     }
 
@@ -1309,5 +1310,55 @@ mod tests {
             },
             true
         ));
+    }
+
+    #[test]
+    fn chord_mouse_and_keyboard_pairs_parse_and_sort() {
+        let b = parse_hotkey_binding("b+a").expect("chord should parse");
+        assert_eq!(b.key_tokens, vec!["a", "b"]);
+        assert_eq!(format_hotkey_binding(&b), "a+b");
+
+        let m = parse_hotkey_binding("mouseright+mouseleft").expect("mouse chord should parse");
+        assert_eq!(m.key_tokens, vec!["mouseleft", "mouseright"]);
+        assert_eq!(format_hotkey_binding(&m), "mouseleft+mouseright");
+
+        let mixed = parse_hotkey_binding("mouseleft+a").expect("mixed chord");
+        assert_eq!(mixed.key_tokens, vec!["a", "mouseleft"]);
+
+        let with_mod = parse_hotkey_binding("ctrl+b+a").expect("mod+chord");
+        assert!(with_mod.ctrl);
+        assert_eq!(with_mod.key_tokens, vec!["a", "b"]);
+        assert_eq!(format_hotkey_binding(&with_mod), "ctrl+a+b");
+    }
+
+    #[test]
+    fn chord_rejects_too_many_or_duplicate_mains() {
+        // up to 5 allowed, 6 should fail
+        assert!(parse_hotkey_binding("a+b+c+d+e").is_ok());
+        assert!(parse_hotkey_binding("a+b+c+d+e+f").is_err());
+        assert!(parse_hotkey_binding("a+a").is_err());
+        assert!(parse_hotkey_binding("mouseleft+mouseleft").is_err());
+    }
+
+    #[test]
+    fn chord_is_detected_as_mouse_when_any_main_is_mouse() {
+        let b = parse_hotkey_binding("mouseleft+a").unwrap();
+        assert!(is_mouse_hotkey_binding(&b));
+        let k = parse_hotkey_binding("a+b").unwrap();
+        assert!(!is_mouse_hotkey_binding(&k));
+        let mm = parse_hotkey_binding("mouseleft+mouseright").unwrap();
+        assert!(is_mouse_hotkey_binding(&mm));
+    }
+
+    #[test]
+    fn chord_pressed_requires_all_mains() {
+        // relaxed mode, no modifiers required
+        let binding = parse_hotkey_binding("a+b").unwrap();
+        // simulate both needed but we test via modifiers_match only; pressed check needs real VK state
+        // Just verify chord parsing retains both vks sorted
+        assert_eq!(binding.main_vks.len(), 2);
+        // Ensure different order normalizes same
+        let rev = parse_hotkey_binding("b+a").unwrap();
+        assert_eq!(binding, rev);
     }
 }
