@@ -12,10 +12,16 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { applyAccentTheme } from "./accentTheme";
+import {
+  getExtension,
+  isLegacyVideoExtension,
+  resolveBackgroundSource,
+} from "./backgroundMedia";
 import UpdateBanner from "./components/Updatebanner";
 import {
   buildHotkeyWithHeld,
@@ -1221,59 +1227,63 @@ export default function App() {
     };
   }, []);
 
-  useLayoutEffect(() => {
-    const root = document.querySelector(".app-root") as HTMLElement | null;
-    if (!root) return;
-
+  const backgroundMedia = useMemo(() => {
     const sfx = tabSuffix(tab);
-    const img = resolvePerPage(
+    const raw = resolvePerPage(
       settings,
       settings.backgroundImage,
       `backgroundImage${sfx}`,
-    );
-    const escape = (s: string) =>
-      s
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/'/g, "\\'")
-        .replace(/\)/g, "\\)")
-        .replace(/\n/g, "")
-        .replace(/\r/g, "");
-
-    if (!img) {
-      root.style.setProperty("--bg-image", "none");
-    } else if (
-      img.startsWith("http://") ||
-      img.startsWith("https://") ||
-      img.startsWith("data:image/") ||
-      img.startsWith("asset://")
-    ) {
-      root.style.setProperty("--bg-image", `url("${escape(img)}")`);
-    } else if (img.startsWith("data:")) {
-      root.style.setProperty("--bg-image", "none");
-    } else {
-      const converted = convertFileSrc(img);
-      if (
-        converted.startsWith("http://") ||
-        converted.startsWith("https://") ||
-        converted.startsWith("asset://")
-      ) {
-        root.style.setProperty("--bg-image", `url("${escape(converted)}")`);
-      } else {
-        root.style.setProperty("--bg-image", "none");
+    ) as string;
+    const trimmed = (raw ?? "").trim();
+    if (!trimmed)
+      return { kind: "none" as const, cssUrl: null, videoSrc: null };
+    let converted: string | null = null;
+    const lower = trimmed.toLowerCase();
+    const isRemoteOrData =
+      lower.startsWith("http://") ||
+      lower.startsWith("https://") ||
+      lower.startsWith("data:") ||
+      lower.startsWith("asset://");
+    if (!isRemoteOrData) {
+      try {
+        converted = convertFileSrc(trimmed);
+      } catch {
+        converted = null;
       }
     }
+    const resolved = resolveBackgroundSource(trimmed, converted);
+    if (resolved.kind === "image" && resolved.cssUrl) {
+      return {
+        kind: "image" as const,
+        cssUrl: resolved.cssUrl,
+        videoSrc: null,
+      };
+    }
+    if (resolved.kind === "video" && resolved.src) {
+      return { kind: "video" as const, cssUrl: null, videoSrc: resolved.src };
+    }
+    return { kind: "none" as const, cssUrl: null, videoSrc: null };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    settings,
     settings.backgroundImage,
-    settings.perPageAppearance,
     settings.backgroundImageSimple,
     settings.backgroundImageAdvanced,
     settings.backgroundImageZones,
     settings.backgroundImageClickPoints,
     settings.backgroundImageSettings,
+    settings.perPageAppearance,
     tab,
   ]);
+
+  useLayoutEffect(() => {
+    const root = document.querySelector(".app-root") as HTMLElement | null;
+    if (!root) return;
+    if (backgroundMedia.kind === "image" && backgroundMedia.cssUrl) {
+      root.style.setProperty("--bg-image", `url("${backgroundMedia.cssUrl}")`);
+    } else {
+      root.style.setProperty("--bg-image", "none");
+    }
+  }, [backgroundMedia]);
 
   useLayoutEffect(() => {
     const root = document.querySelector(".app-root") as HTMLElement | null;
@@ -1664,6 +1674,37 @@ export default function App() {
 
   return (
     <div className="app-root" data-tab={tab}>
+      {backgroundMedia.videoSrc && (
+        <video
+          key={backgroundMedia.videoSrc}
+          className="app-bg-video"
+          src={backgroundMedia.videoSrc}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+          onError={(e) => {
+            const ext = getExtension(backgroundMedia.videoSrc ?? "");
+            const legacy = isLegacyVideoExtension(ext);
+            error(
+              JSON.stringify({
+                source: "App.backgroundVideo",
+                error: `video load failed ext=${ext} legacy=${legacy}`,
+              }),
+            );
+            // Hide broken video so UI not black; user can pick MP4/WebM instead
+            const target = e.currentTarget as HTMLVideoElement;
+            target.style.display = "none";
+            target.pause();
+          }}
+          onLoadedData={(e) => {
+            // Ensure hidden video from previous error becomes visible again when src changes
+            (e.currentTarget as HTMLVideoElement).style.display = "";
+          }}
+        />
+      )}
       <TitleBar
         tab={tab}
         setTab={handleTabChange}

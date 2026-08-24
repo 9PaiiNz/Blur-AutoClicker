@@ -1,14 +1,29 @@
 import { error } from "@tauri-apps/plugin-log";
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  getExtension,
+  IMAGE_EXTENSIONS,
+  isLegacyVideoExtension,
+  PLAYABLE_VIDEO_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+} from "../../../../backgroundMedia";
 import { DEFAULT_ACCENT_COLOR } from "../../../../settingsSchema";
 import type { IconColor, IconTheme } from "../../../../settingsSchema";
 import type { Settings } from "../../../../store";
 import { SettingsCard } from "./shared";
 
-const IMAGE_FILTERS = [
+const MEDIA_FILTERS = [
+  {
+    name: "All Media",
+    extensions: [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS] as string[],
+  },
   {
     name: "Images",
-    extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp"],
+    extensions: [...IMAGE_EXTENSIONS] as string[],
+  },
+  {
+    name: "Videos (reliable)",
+    extensions: [...PLAYABLE_VIDEO_EXTENSIONS] as string[],
   },
 ];
 
@@ -50,9 +65,9 @@ function PageAppearanceControls({
 
   const handleBrowse = async () => {
     try {
-      const selected = await open({ multiple: false, filters: IMAGE_FILTERS });
+      const selected = await open({ multiple: false, filters: MEDIA_FILTERS });
       if (selected) {
-        update({ [bgImageKey]: selected });
+        update({ [bgImageKey]: selected as string });
       }
     } catch (err) {
       error(
@@ -68,9 +83,10 @@ function PageAppearanceControls({
     <>
       <div className="settings-row">
         <div className="settings-label-group">
-          <span className="settings-label">Background Image</span>
+          <span className="settings-label">Background Media</span>
           <span className="settings-sublabel">
-            Path or URL to a background image.
+            Path or URL to an image or video. Images support transparency.
+            Videos auto-loop muted.
           </span>
         </div>
         <div className="settings-bg-image-row">
@@ -79,7 +95,7 @@ function PageAppearanceControls({
             type="text"
             value={bgImage}
             onChange={(e) => update({ [bgImageKey]: e.target.value })}
-            placeholder="https://example.com/image.png"
+            placeholder="https://example.com/image.png or C:\Videos\loop.mp4"
           />
           <div className="settings-bg-buttons">
             <button className="settings-btn-secondary" onClick={handleBrowse}>
@@ -94,6 +110,23 @@ function PageAppearanceControls({
             </button>
           </div>
         </div>
+        {(() => {
+          const ext = getExtension(bgImage);
+          if (isLegacyVideoExtension(ext)) {
+            return (
+              <div className="settings-row" style={{ marginTop: "-0.5rem" }}>
+                <span
+                  className="settings-sublabel"
+                  style={{ color: "var(--accent-yellow)" }}
+                >
+                  MOV/M4V/AVI/MKV often fail. If video stays black, convert it
+                  to mp4.
+                </span>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       <div className="settings-row">
@@ -120,9 +153,9 @@ function PageAppearanceControls({
 
       <div className="settings-row">
         <div className="settings-label-group">
-          <span className="settings-label">Background Image Opacity</span>
+          <span className="settings-label">Background Media Opacity</span>
           <span className="settings-sublabel">
-            Transparency of the background image.
+            Transparency of the background image or video.
           </span>
         </div>
         <div className="settings-opacity-controls">
@@ -163,7 +196,7 @@ function PageAppearanceControls({
         <div className="settings-label-group">
           <span className="settings-label">Background Blur</span>
           <span className="settings-sublabel">
-            Blur the background image itself, across the whole UI.
+            Blur the background media itself, across the whole UI.
           </span>
         </div>
         <div className="settings-opacity-controls">
