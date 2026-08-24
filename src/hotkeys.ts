@@ -418,6 +418,119 @@ function buildHotkeyString(
   return parts.join("+");
 }
 
+const HELD_ORDER = [
+  "ctrl",
+  "leftctrl",
+  "rightctrl",
+  "alt",
+  "leftalt",
+  "rightalt",
+  "shift",
+  "leftshift",
+  "rightshift",
+  "super",
+  "leftsuper",
+  "rightsuper",
+];
+
+export function sortHeld(held: string[]): string[] {
+  return [...held].sort(
+    (a, b) => HELD_ORDER.indexOf(a) - HELD_ORDER.indexOf(b),
+  );
+}
+
+function normalizeMainKeyForStorage(raw: string): string {
+  if (/^Key[A-Z]$/.test(raw)) return raw.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(raw)) return raw.slice(5);
+  return raw.toLowerCase();
+}
+
+export function getMainKey(
+  event: Pick<KeyboardCaptureEvent, "key" | "code" | "location">,
+): string | null {
+  const lowerKey = event.key.toLowerCase();
+  if (MODIFIER_KEYS.has(lowerKey)) return null;
+  if (event.code && MODIFIER_CODES.has(event.code)) return null;
+  if (lowerKey === "escape" || event.code === "Escape") return null;
+  const raw =
+    (event.code
+      ? mainKeyFromCode(event.code, event.key, event.location)
+      : null) ?? mainKeyFromKey(event.key);
+  if (!raw) return null;
+  return normalizeMainKeyForStorage(raw);
+}
+
+export const MAX_CHORD_MAINS = 5;
+
+export function buildHotkeyWithHeld(mainKey: string, held: string[]): string {
+  if (held.length === 0) return normalizeMainKeyForStorage(mainKey);
+  return `${sortHeld(held).join("+")}+${normalizeMainKeyForStorage(mainKey)}`;
+}
+
+export function buildChordHotkey(
+  mains: string[],
+  held: string[],
+): string | null {
+  if (mains.length === 0) return null;
+  if (mains.length > MAX_CHORD_MAINS) return null;
+  const normalized = mains.map((m) => normalizeMainKeyForStorage(m)).sort();
+  if (new Set(normalized).size !== normalized.length) return null;
+  const prefix = held.length > 0 ? `${sortHeld(held).join("+")}+` : "";
+  return `${prefix}${normalized.join("+")}`;
+}
+
+const SIDE_MODIFIER_TOKENS = new Set([
+  "leftctrl",
+  "ctrlleft",
+  "lctrl",
+  "rightctrl",
+  "ctrlright",
+  "rctrl",
+  "leftalt",
+  "altleft",
+  "lalt",
+  "rightalt",
+  "altright",
+  "ralt",
+  "altgr",
+  "leftshift",
+  "shiftleft",
+  "lshift",
+  "rightshift",
+  "shiftright",
+  "rshift",
+  "leftsuper",
+  "superleft",
+  "leftwin",
+  "winleft",
+  "lwin",
+  "rightsuper",
+  "superright",
+  "rightwin",
+  "winright",
+  "rwin",
+]);
+
+export function hotkeyMainKeys(hotkey: string): string[] {
+  if (!hotkey) return [];
+  const parts = hotkey
+    .split("+")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  // solo side modifier is treated as main (backend early return for SIDE_VKS)
+  if (parts.length === 1 && SIDE_MODIFIER_TOKENS.has(parts[0]!)) {
+    return [parts[0]!];
+  }
+  const mains: string[] = [];
+  for (const p of parts) {
+    if (SIDE_MODIFIER_TOKENS.has(p)) continue;
+    const mod = normalizeModifierToken(p);
+    if (mod) continue;
+    mains.push(p);
+  }
+  return mains;
+}
+
 function displayTokenFromStoredValue(
   token: string,
   layoutMap: LayoutMapLike | null,
@@ -629,7 +742,9 @@ export function formatHotkeyForDisplay(
   return value
     .split("+")
     .map((part) => {
-      const modifier = normalizeModifierToken(part);
+      const lower = part.trim().toLowerCase();
+      const aliasCanonical = normalizeNamedKey(lower) ?? lower;
+      const modifier = normalizeModifierToken(aliasCanonical);
       if (modifier) {
         if (modifier === "ctrl") return labels?.modifiers.ctrl ?? "Ctrl";
         if (modifier === "alt") return labels?.modifiers.alt ?? "Alt";
@@ -637,7 +752,11 @@ export function formatHotkeyForDisplay(
         return labels?.modifiers.super ?? "Super";
       }
 
-      const display = displayTokenFromStoredValue(part, layoutMap, labels);
+      const display = displayTokenFromStoredValue(
+        aliasCanonical,
+        layoutMap,
+        labels,
+      );
       return display.length === 1 ? display.toUpperCase() : display;
     })
     .join(" + ");
@@ -651,11 +770,59 @@ function canonicalizeHotkeyString(
   let alt = false;
   let shift = false;
   let superKey = false;
-  let mainKey: string | null = null;
+  let leftCtrl = false;
+  let rightCtrl = false;
+  let leftAlt = false;
+  let rightAlt = false;
+  let leftShift = false;
+  let rightShift = false;
+  let leftSuper = false;
+  let rightSuper = false;
+  const mainKeys: string[] = [];
 
   for (const rawPart of value.split("+")) {
-    const part = rawPart.trim();
+    const part = rawPart.trim().toLowerCase();
     if (!part) continue;
+
+    // side-specific first
+    if (["leftctrl", "ctrlleft", "lctrl"].includes(part)) {
+      leftCtrl = true;
+      continue;
+    }
+    if (["rightctrl", "ctrlright", "rctrl"].includes(part)) {
+      rightCtrl = true;
+      continue;
+    }
+    if (["leftalt", "altleft", "lalt"].includes(part)) {
+      leftAlt = true;
+      continue;
+    }
+    if (["rightalt", "altright", "ralt", "altgr"].includes(part)) {
+      rightAlt = true;
+      continue;
+    }
+    if (["leftshift", "shiftleft", "lshift"].includes(part)) {
+      leftShift = true;
+      continue;
+    }
+    if (["rightshift", "shiftright", "rshift"].includes(part)) {
+      rightShift = true;
+      continue;
+    }
+    if (
+      ["leftsuper", "superleft", "leftwin", "winleft", "lwin"].includes(part)
+    ) {
+      leftSuper = true;
+      continue;
+    }
+    if (
+      ["rightsuper", "superright", "rightwin", "winright", "rwin"].includes(
+        part,
+      )
+    ) {
+      rightSuper = true;
+      continue;
+    }
 
     const modifier = normalizeModifierToken(part);
     if (modifier) {
@@ -666,27 +833,54 @@ function canonicalizeHotkeyString(
       continue;
     }
 
-    mainKey = normalizeStoredMainKey(part, layoutMap);
+    mainKeys.push(normalizeStoredMainKey(part, layoutMap));
   }
 
+  // chord: sort lexical (keep duplicates so backend can reject)
+  const sortedMains = [...mainKeys].sort();
   const parts: string[] = [];
   if (ctrl) parts.push("ctrl");
+  if (leftCtrl) parts.push("leftctrl");
+  if (rightCtrl) parts.push("rightctrl");
   if (alt) parts.push("alt");
+  if (leftAlt) parts.push("leftalt");
+  if (rightAlt) parts.push("rightalt");
   if (shift) parts.push("shift");
+  if (leftShift) parts.push("leftshift");
+  if (rightShift) parts.push("rightshift");
   if (superKey) parts.push("super");
-  if (mainKey) parts.push(mainKey);
+  if (leftSuper) parts.push("leftsuper");
+  if (rightSuper) parts.push("rightsuper");
+  for (const mk of sortedMains) parts.push(mk);
   return parts.join("+");
 }
 
 export function hotkeyMainKey(hotkey: string): string | null {
   if (!hotkey) return null;
+  const mains = hotkeyMainKeys(hotkey);
+  if (mains.length > 0) return mains[mains.length - 1] ?? null;
   const parts = hotkey.split("+").map((p) => p.trim().toLowerCase());
   return parts.length > 0 ? (parts[parts.length - 1] ?? null) : null;
 }
 
 export function hotkeyModifiers(hotkey: string): string[] {
-  const parts = hotkey.split("+").map((p) => p.trim().toLowerCase());
-  return parts.length > 1 ? parts.slice(0, -1) : [];
+  const mains = hotkeyMainKeys(hotkey);
+  const allParts = hotkey
+    .split("+")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  // solo side modifier is main, not modifier
+  if (allParts.length === 1 && SIDE_MODIFIER_TOKENS.has(allParts[0]!)) {
+    return [];
+  }
+  return allParts.filter((p) => {
+    if (SIDE_MODIFIER_TOKENS.has(p)) {
+      // if this side token is also a main (solo case), don't count as modifier
+      if (mains.includes(p)) return false;
+      return true;
+    }
+    return normalizeModifierToken(p) !== null;
+  });
 }
 
 export function conflictsWithAutoPressKey(
@@ -695,10 +889,11 @@ export function conflictsWithAutoPressKey(
   keyboardKeyCaseIsUpper: boolean,
 ): boolean {
   if (!hotkey || !keyboardKey) return false;
-  const mainKey = hotkeyMainKey(hotkey);
+  const mains = hotkeyMainKeys(hotkey);
   const modifiers = hotkeyModifiers(hotkey);
   const kbKey = keyboardKey.toLowerCase();
-  if (!mainKey || mainKey !== kbKey) return false;
+  // chord hotkeys need both mains, single auto key never triggers loop
+  if (mains.length !== 1 || mains[0] !== kbKey) return false;
   if (modifiers.length === 0) return true;
   if (
     keyboardKeyCaseIsUpper &&

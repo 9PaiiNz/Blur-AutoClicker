@@ -89,13 +89,16 @@ pub fn ensure_data_dir() -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn webview2_installed() -> bool {
-    use winreg::enums::HKEY_LOCAL_MACHINE;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
     use winreg::RegKey;
-
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     WEBVIEW2_CLIENT_KEYS
         .iter()
         .any(|key| hklm.open_subkey(key).is_ok())
+        || WEBVIEW2_CLIENT_KEYS
+            .iter()
+            .any(|key| hkcu.open_subkey(key).is_ok())
 }
 
 /// Whether the Evergreen bootstrapper was actually launched (the packaged
@@ -117,6 +120,12 @@ fn ensure_webview2() {
     };
     let bootstrapper = dir.join(BOOTSTRAPPER_FILE);
     if !bootstrapper.is_file() {
+        return;
+    }
+    if !bootstrapper_is_trusted(&bootstrapper) {
+        log::warn!(
+            "[Portable] WebView2 bootstrapper failed signature verification; not launching it."
+        );
         return;
     }
 
@@ -156,6 +165,45 @@ pub(crate) fn notify_fatal_error(msg: &str) {
             title.as_ptr(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND,
         );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn bootstrapper_is_trusted(bootstrapper: &std::path::Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Security::WinTrust::{
+        WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_FILE_INFO,
+        WTD_CHOICE_FILE, WTD_REVOKE_WHOLECHAIN, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY,
+        WTD_UI_NONE,
+    };
+    let wide: Vec<u16> = bootstrapper
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    unsafe {
+        let mut file_info: WINTRUST_FILE_INFO = std::mem::zeroed();
+        file_info.cbStruct = std::mem::size_of::<WINTRUST_FILE_INFO>() as u32;
+        file_info.pcwszFilePath = wide.as_ptr();
+        let mut data: WINTRUST_DATA = std::mem::zeroed();
+        data.cbStruct = std::mem::size_of::<WINTRUST_DATA>() as u32;
+        data.dwUIChoice = WTD_UI_NONE;
+        data.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+        data.dwUnionChoice = WTD_CHOICE_FILE;
+        data.Anonymous.pFile = &mut file_info as *mut _;
+        data.dwStateAction = WTD_STATEACTION_VERIFY;
+        let verified = WinVerifyTrust(
+            std::ptr::null_mut(),
+            &WINTRUST_ACTION_GENERIC_VERIFY_V2 as *const _ as *mut _,
+            &mut data as *mut _ as *mut _,
+        ) == 0;
+        data.dwStateAction = WTD_STATEACTION_CLOSE;
+        WinVerifyTrust(
+            std::ptr::null_mut(),
+            &WINTRUST_ACTION_GENERIC_VERIFY_V2 as *const _ as *mut _,
+            &mut data as *mut _ as *mut _,
+        );
+        verified
     }
 }
 

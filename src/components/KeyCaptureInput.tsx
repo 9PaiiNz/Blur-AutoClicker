@@ -8,11 +8,14 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { error } from "@tauri-apps/plugin-log";
 import {
+  buildHotkeyWithHeld,
   captureHotkey,
   captureModifierHotkey,
   formatHotkeyForDisplay,
   getKeyboardLayoutMap,
+  getMainKey,
   getStateClass,
+  sortHeld,
 } from "../hotkeys";
 import { isAlphabeticKeyboardKey } from "../keyboardKeyCase";
 import type { KeyboardKeyCase, MouseButton } from "../store";
@@ -154,8 +157,19 @@ export default function KeyCaptureInput({
         return;
       }
 
+      const mainKey = getMainKey(event);
+      if (mainKey) {
+        const held = capturedModifiersRef.current;
+        const captured =
+          held.length > 0
+            ? buildHotkeyWithHeld(mainKey, held)
+            : captureHotkey(event);
+        if (captured) {
+          finishCapture(captured);
+        }
+        return;
+      }
       const captured = captureHotkey(event);
-
       if (captured) {
         finishCapture(captured);
       }
@@ -174,7 +188,7 @@ export default function KeyCaptureInput({
           // All keys released with no main key captured: commit the full
           // modifier chord (e.g. "leftctrl+leftshift") instead of just the
           // last-released modifier.
-          const full = capturedModifiersRef.current.join("+");
+          const full = sortHeld(capturedModifiersRef.current).join("+");
           finishCapture(full || undefined);
         }
       }
@@ -188,14 +202,21 @@ export default function KeyCaptureInput({
       finishCapture();
     };
 
+    const handleBlur = () => {
+      comboRef.current = null;
+      capturedModifiersRef.current = [];
+    };
+
     window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("contextmenu", handleContextMenu, true);
+    window.addEventListener("blur", handleBlur);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("contextmenu", handleContextMenu, true);
+      window.removeEventListener("blur", handleBlur);
     };
   }, [listening]);
 

@@ -21,6 +21,7 @@ pub fn initialize_crashpad() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&crash_database)?;
 
     let handler_path = resolve_handler_path()?;
+    verify_handler_integrity(&handler_path)?;
 
     let config = crashpad_rs::CrashpadConfig::builder()
         .handler_path(&handler_path)
@@ -68,6 +69,20 @@ fn resolve_handler_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         return Ok(resource_dir);
     }
     Err("crashpad_handler.exe not found. Ensure the crashpad-rs 'prebuilt' feature is enabled or set CRASHPAD_HANDLER_PATH.".into())
+}
+
+#[cfg(feature = "crashpad")]
+fn verify_handler_integrity(handler: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(pinned) = option_env!("CRASHPAD_HANDLER_SHA256") else {
+        return Ok(());
+    };
+    let bytes = std::fs::read(handler)?;
+    use sha2::Digest;
+    let digest = hex::encode(sha2::Sha256::digest(&bytes));
+    if !digest.eq_ignore_ascii_case(pinned) {
+        return Err(format!("crashpad_handler.exe integrity check failed (expected {pinned}, got {digest}); refusing to spawn").into());
+    }
+    Ok(())
 }
 
 #[cfg(not(feature = "crashpad"))]

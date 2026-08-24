@@ -7,12 +7,21 @@ function renderMarkdown(text: string): { __html: string } {
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-  html = html.replace(/(?<!["'=])https?:\/\/[^\s<)]+/g, '<a href="$&">$&</a>');
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  html = html
+    .split(/(<a[^>]*>.*?<\/a>|<code>.*?<\/code>)/g)
+    .map((part) =>
+      part.startsWith("<a") || part.startsWith("<code")
+        ? part
+        : part.replace(/(?<!["'=])https?:\/\/[^\s<)]+/g, '<a href="$&">$&</a>'),
+    )
+    .join("");
 
   return { __html: html };
 }
@@ -28,7 +37,23 @@ export default function ChangelogContent({ entries }: Props) {
     const anchor = (event.target as Element).closest("a");
     if (anchor) {
       event.preventDefault();
-      void openUrl(anchor.href);
+      try {
+        const raw = anchor.getAttribute("href") || "";
+        const decoded = raw
+          .replace(/&amp;/g, "&")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .trim();
+        const lower = decoded.toLowerCase();
+        if (!lower.startsWith("http://") && !lower.startsWith("https://"))
+          return;
+        const url = new URL(decoded);
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          void openUrl(decoded);
+        }
+      } catch {
+        void 0;
+      }
     }
   }, []);
 

@@ -1,0 +1,4 @@
+# Optional pin for wingetcreate.exe (sha256 hex, 64 chars).
+# If present, release.yml Verify wingetcreate will fail build on mismatch.
+# Fill with (Get-FileHash wingetcreate.exe -Algorithm SHA256).Hash after verifying Authenticode.
+

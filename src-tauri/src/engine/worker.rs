@@ -150,14 +150,18 @@ pub fn start_clicker_inner(app: &AppHandle) -> AppResult<ClickerStatusPayload> {
             .unwrap_or_else(poisoned_inner)
             .clone();
         if let Some(binding) = hotkey_binding {
-            if binding.main_vk == Some(config.key_code as i32) {
+            if binding.main_vks.len() == 1 && binding.main_vks.contains(&(config.key_code as i32)) {
+                let has_any_ctrl = binding.ctrl || binding.left_ctrl || binding.right_ctrl;
+                let has_any_alt = binding.alt || binding.left_alt || binding.right_alt;
+                let has_any_shift = binding.shift || binding.left_shift || binding.right_shift;
+                let has_any_super = binding.super_key || binding.left_super || binding.right_super;
                 let conflicts_with_plain_key =
-                    !binding.ctrl && !binding.alt && !binding.shift && !binding.super_key;
+                    !has_any_ctrl && !has_any_alt && !has_any_shift && !has_any_super;
                 let conflicts_with_uppercase_key = config.keyboard_uppercase
-                    && binding.shift
-                    && !binding.ctrl
-                    && !binding.alt
-                    && !binding.super_key;
+                    && has_any_shift
+                    && !has_any_ctrl
+                    && !has_any_alt
+                    && !has_any_super;
 
                 if conflicts_with_plain_key || conflicts_with_uppercase_key {
                     return Err(AppError::HotkeyConflict(String::from(

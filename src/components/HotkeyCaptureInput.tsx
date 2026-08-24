@@ -9,13 +9,16 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { error } from "@tauri-apps/plugin-log";
 import {
+  buildChordHotkey,
   captureHotkey,
   captureModifierHotkey,
-  captureMouseHotkey,
   defaultHotkeyLabels,
   formatHotkeyForDisplay,
   getKeyboardLayoutMap,
+  getMainKey,
   getStateClass,
+  MAX_CHORD_MAINS,
+  sortHeld,
 } from "../hotkeys";
 
 interface Props {
@@ -40,7 +43,7 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
     const [listening, setListening] = useState(false);
     const inputRef = useRef<HTMLButtonElement | null>(null);
     const ignorePrimaryInputMouseUntilRef = useRef(0);
-    const suppressedMouseButtonRef = useRef<number | null>(null);
+    const suppressedMouseButtonsRef = useRef<Set<number>>(new Set());
     const suppressResetTimerRef = useRef<number | null>(null);
     const [layoutMap, setLayoutMap] =
       useState<Awaited<ReturnType<typeof getKeyboardLayoutMap>>>(null);
@@ -74,7 +77,7 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
       });
 
       const handleSuppressedMouseEvent = (event: MouseEvent) => {
-        if (suppressedMouseButtonRef.current !== event.button) return;
+        if (!suppressedMouseButtonsRef.current.has(event.button)) return;
 
         if (event.cancelable) {
           event.preventDefault();
@@ -142,7 +145,88 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         inputRef.current?.blur();
       };
 
-      let pendingModifierHotkey: string | null = null;
+      const heldModifiers: string[] = [];
+      const capturedModifiers: string[] = [];
+      const heldMains = new Set<string>();
+      let chordMaxSeen = new Set<string>();
+      let chordTimer: number | null = null;
+      const CHORD_WINDOW_MS = 600;
+
+      const mouseButtonToToken: Record<number, string> = {
+        0: "mouseleft",
+        1: "mousemiddle",
+        2: "mouseright",
+        3: "mouse4",
+        4: "mouse5",
+      };
+
+      const suppressButtons = (buttons: number[]) => {
+        for (const b of buttons) suppressedMouseButtonsRef.current.add(b);
+        if (suppressResetTimerRef.current !== null) {
+          window.clearTimeout(suppressResetTimerRef.current);
+        }
+        suppressResetTimerRef.current = window.setTimeout(() => {
+          suppressedMouseButtonsRef.current.clear();
+          suppressResetTimerRef.current = null;
+        }, 200);
+      };
+
+      const clearChordTimer = () => {
+        if (chordTimer !== null) {
+          window.clearTimeout(chordTimer);
+          chordTimer = null;
+        }
+      };
+
+      const flushChord = () => {
+        const toFlush =
+          chordMaxSeen.size > 0 ? [...chordMaxSeen] : [...heldMains];
+        if (toFlush.length === 0) return;
+        const chord = buildChordHotkey(toFlush, heldModifiers);
+        if (chord) {
+          heldMains.clear();
+          chordMaxSeen.clear();
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
+          clearChordTimer();
+          finishCapture(chord);
+        }
+      };
+
+      const tryAddMain = (token: string, buttonsForSuppress: number[]) => {
+        if (heldMains.has(token)) return;
+        if (heldMains.size >= MAX_CHORD_MAINS) {
+          return;
+        }
+        heldMains.add(token);
+        if (heldMains.size > chordMaxSeen.size) {
+          chordMaxSeen = new Set(heldMains);
+        }
+        if (buttonsForSuppress.length) suppressButtons(buttonsForSuppress);
+
+        if (heldMains.size === 1) {
+          clearChordTimer();
+          chordTimer = window.setTimeout(() => {
+            chordTimer = null;
+            flushChord();
+          }, CHORD_WINDOW_MS);
+          return;
+        }
+
+        if (heldMains.size === MAX_CHORD_MAINS) {
+          // chord full -> immediate flush
+          clearChordTimer();
+          flushChord();
+          return;
+        }
+
+        // size 2..MAX-1: restart timer to allow more keys for larger chord
+        clearChordTimer();
+        chordTimer = window.setTimeout(() => {
+          chordTimer = null;
+          flushChord();
+        }, CHORD_WINDOW_MS);
+      };
 
       const handleKeyDown = (event: KeyboardEvent) => {
         event.preventDefault();
@@ -150,29 +234,54 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
 
         const modifierHotkey = captureModifierHotkey(event);
         if (modifierHotkey) {
-          pendingModifierHotkey = modifierHotkey;
+          if (!heldModifiers.includes(modifierHotkey))
+            heldModifiers.push(modifierHotkey);
+          if (!capturedModifiers.includes(modifierHotkey))
+            capturedModifiers.push(modifierHotkey);
           return;
         }
 
         if (event.key === "Escape" || event.code === "Escape") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
+          heldMains.clear();
+          chordMaxSeen.clear();
+          clearChordTimer();
           finishCapture("escape");
           return;
         }
 
         if (event.key === "Backspace") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
+          heldMains.clear();
+          chordMaxSeen.clear();
+          clearChordTimer();
           finishCapture("backspace");
           return;
         }
 
         if (event.key === "Delete") {
-          pendingModifierHotkey = null;
+          heldModifiers.length = 0;
+          capturedModifiers.length = 0;
+          heldMains.clear();
+          chordMaxSeen.clear();
+          clearChordTimer();
           finishCapture("delete");
           return;
         }
 
-        pendingModifierHotkey = null;
+        const mainKey = getMainKey(event);
+        if (mainKey) {
+          tryAddMain(mainKey, []);
+          return;
+        }
+
+        heldModifiers.length = 0;
+        capturedModifiers.length = 0;
+        heldMains.clear();
+        chordMaxSeen.clear();
+        clearChordTimer();
 
         const nextHotkey = captureHotkey(event);
         if (!nextHotkey) return;
@@ -185,10 +294,42 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         event.stopPropagation();
 
         const modifierHotkey = captureModifierHotkey(event);
-        if (!modifierHotkey || modifierHotkey !== pendingModifierHotkey) return;
+        if (modifierHotkey) {
+          const idx = heldModifiers.indexOf(modifierHotkey);
+          if (idx !== -1) heldModifiers.splice(idx, 1);
+          if (
+            heldModifiers.length === 0 &&
+            capturedModifiers.length > 0 &&
+            heldMains.size === 0
+          ) {
+            const full = sortHeld(capturedModifiers).join("+");
+            capturedModifiers.length = 0;
+            chordMaxSeen.clear();
+            clearChordTimer();
+            finishCapture(full);
+          }
+          return;
+        }
 
-        pendingModifierHotkey = null;
-        finishCapture(modifierHotkey);
+        const mainKey = getMainKey(event);
+        if (mainKey && heldMains.has(mainKey)) {
+          heldMains.delete(mainKey);
+          if (chordTimer !== null && heldMains.size === 0) {
+            // all mains released before window expiry -> flush whatever chord was seen
+            clearChordTimer();
+            // if chordMaxSeen has something, flush it, else flush the released single
+            if (chordMaxSeen.size > 0) {
+              flushChord();
+            } else {
+              const chord = buildChordHotkey([mainKey], heldModifiers);
+              if (chord) {
+                heldModifiers.length = 0;
+                capturedModifiers.length = 0;
+                finishCapture(chord);
+              }
+            }
+          }
+        }
       };
 
       const handleMouseDown = (event: MouseEvent) => {
@@ -206,24 +347,40 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
           return;
         }
 
-        const nextHotkey = captureMouseHotkey(event);
-        if (!nextHotkey) return;
-
-        suppressedMouseButtonRef.current = event.button;
-        if (suppressResetTimerRef.current !== null) {
-          window.clearTimeout(suppressResetTimerRef.current);
-        }
-        suppressResetTimerRef.current = window.setTimeout(() => {
-          suppressedMouseButtonRef.current = null;
-          suppressResetTimerRef.current = null;
-        }, 200);
+        const token = mouseButtonToToken[event.button];
+        if (!token) return;
 
         if (event.cancelable) {
           event.preventDefault();
         }
         event.stopPropagation();
 
-        finishCapture(nextHotkey);
+        // also capture quick single via tryAddMain path (handles chord)
+        tryAddMain(token, [event.button]);
+      };
+
+      const handleMouseUp = (event: MouseEvent) => {
+        if (suppressedMouseButtonsRef.current.has(event.button)) {
+          if (event.cancelable) event.preventDefault();
+          event.stopPropagation();
+        }
+        const token = mouseButtonToToken[event.button];
+        if (token && heldMains.has(token)) {
+          heldMains.delete(token);
+          if (chordTimer !== null && heldMains.size === 0) {
+            clearChordTimer();
+            if (chordMaxSeen.size > 0) {
+              flushChord();
+            } else {
+              const chord = buildChordHotkey([token], heldModifiers);
+              if (chord) {
+                heldModifiers.length = 0;
+                capturedModifiers.length = 0;
+                finishCapture(chord);
+              }
+            }
+          }
+        }
       };
 
       const handleContextMenu = (event: MouseEvent) => {
@@ -231,16 +388,29 @@ const HotkeyCaptureInput = forwardRef<HotkeyCaptureInputHandle, Props>(
         event.stopPropagation();
       };
 
+      const handleBlur = () => {
+        heldModifiers.length = 0;
+        capturedModifiers.length = 0;
+        heldMains.clear();
+        chordMaxSeen.clear();
+        clearChordTimer();
+      };
+
       window.addEventListener("keydown", handleKeyDown, true);
       window.addEventListener("keyup", handleKeyUp, true);
       window.addEventListener("mousedown", handleMouseDown, true);
+      window.addEventListener("mouseup", handleMouseUp, true);
       window.addEventListener("contextmenu", handleContextMenu, true);
+      window.addEventListener("blur", handleBlur);
 
       return () => {
+        clearChordTimer();
         window.removeEventListener("keydown", handleKeyDown, true);
         window.removeEventListener("keyup", handleKeyUp, true);
         window.removeEventListener("mousedown", handleMouseDown, true);
+        window.removeEventListener("mouseup", handleMouseUp, true);
         window.removeEventListener("contextmenu", handleContextMenu, true);
+        window.removeEventListener("blur", handleBlur);
       };
     }, [listening]);
 
