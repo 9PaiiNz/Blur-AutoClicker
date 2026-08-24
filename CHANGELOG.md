@@ -1,7 +1,7 @@
 # v3.9.6 - 24.08.2026 (d.m.y)
 ## Changed
 - Updated UI to show left and right variants of modifier keys instead of just the generic name.
-- Updated Hotkey's to accept multiple main keys (e.g. Ctrl + Shift + A + B + X + N) up to 5. Also allows for left and right mouse click together.
+- Updated Hotkey's to accept multiple main keys (e.g. A + B + X + N) up to 5. Also allows for left and right mouse click together.
 - Added support for more background image and video formats.
 ## Fixed
 - Fixed modifier keys not correctly accepting left and right variants. 
